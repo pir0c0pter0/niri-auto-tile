@@ -182,7 +182,7 @@ ColumnLayout {
         }
 
         NText {
-            text: pluginApi?.tr("settings.about-credit") ?? "Developed by MJr using Claude"
+            text: pluginApi?.tr("settings.about-credit") ?? "Developed by Pir0c0pter0 (MJr) using Claude"
             opacity: 0.7
             font.pixelSize: 12
         }
