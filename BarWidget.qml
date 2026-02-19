@@ -1,53 +1,138 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell
+import qs.Commons
 import qs.Widgets
+import qs.Services.UI
 
-NButton {
-    id: barButton
+Item {
+    id: root
 
     property var pluginApi: null
+    property ShellScreen screen
+    property string widgetId: ""
+    property string section: ""
+    property int sectionWidgetIndex: -1
+    property int sectionWidgetsCount: 0
 
-    readonly property var mainInstance: pluginApi?.mainInstance ?? null
+    readonly property bool pillDirection: BarService.getPillDirection(root)
+
+    readonly property var mainInstance: pluginApi?.mainInstance
     readonly property bool isRunning: mainInstance?.running ?? false
     readonly property bool isEnabled: mainInstance?.enabled ?? false
     readonly property int maxVisible: mainInstance?.maxVisible ?? 4
 
-    tooltip: isEnabled
-        ? (isRunning ? qsTr("Auto-Tile: running (%1 cols)").arg(maxVisible) : qsTr("Auto-Tile: starting..."))
-        : qsTr("Auto-Tile: disabled")
+    readonly property string screenName: screen ? screen.name : ""
+    readonly property string barPosition: Settings.getBarPositionForScreen(screenName)
+    readonly property bool isVertical: barPosition === "left" || barPosition === "right"
+    readonly property real barHeight: Style.getBarHeightForScreen(screenName)
+    readonly property real capsuleHeight: Style.getCapsuleHeightForScreen(screenName)
 
-    contentItem: RowLayout {
-        spacing: 4
-
-        NIcon {
-            name: "view-grid-symbolic"
-            size: 16
-            opacity: isEnabled ? 1.0 : 0.4
-        }
-
-        NText {
-            text: String(maxVisible)
-            opacity: isEnabled ? 1.0 : 0.4
-            visible: barButton.width > 36
-        }
+    readonly property real contentWidth: {
+        if (isVertical) return root.capsuleHeight;
+        return columnIndicator.implicitWidth + Style.marginM * 2;
     }
+    readonly property real contentHeight: root.capsuleHeight
 
-    onClicked: {
-        if (mainInstance) {
-            const newState = !isEnabled;
-            if (pluginApi?.pluginSettings) {
-                pluginApi.pluginSettings.enabled = newState;
-                pluginApi.saveSettings();
+    implicitWidth: contentWidth
+    implicitHeight: contentHeight
+
+    Rectangle {
+        id: visualCapsule
+        x: Style.pixelAlignCenter(parent.width, width)
+        y: Style.pixelAlignCenter(parent.height, height)
+        width: root.contentWidth
+        height: root.contentHeight
+        color: mouseArea.containsMouse ? Color.mHover : Style.capsuleColor
+        radius: Style.radiusL
+        border.color: Style.capsuleBorderColor
+        border.width: Style.capsuleBorderWidth
+
+        Row {
+            id: columnIndicator
+            anchors.centerIn: parent
+            spacing: 2
+            opacity: isEnabled ? 1.0 : 0.35
+
+            Repeater {
+                model: root.maxVisible
+
+                Rectangle {
+                    width: 4
+                    height: root.capsuleHeight * 0.5
+                    radius: 1
+                    color: mouseArea.containsMouse
+                        ? Color.mOnHover
+                        : (isRunning ? Color.mPrimary : Color.mOnSurface)
+                }
             }
         }
     }
 
+    // Status indicator dot
     Rectangle {
-        anchors.bottom: parent.bottom
-        anchors.horizontalCenter: parent.horizontalCenter
-        width: parent.width * 0.6
-        height: 2
-        radius: 1
-        color: isRunning ? "#4caf50" : (isEnabled ? "#ff9800" : "transparent")
+        anchors.bottom: visualCapsule.bottom
+        anchors.horizontalCenter: visualCapsule.horizontalCenter
+        anchors.bottomMargin: 1
+        width: 4
+        height: 4
+        radius: 2
+        visible: isEnabled
+        color: isRunning ? "#4caf50" : "#ff9800"
+    }
+
+    NPopupContextMenu {
+        id: contextMenu
+
+        model: {
+            var items = [];
+            items.push({
+                "label": isEnabled
+                    ? (pluginApi?.tr("bar.disable") ?? "Disable Auto-Tile")
+                    : (pluginApi?.tr("bar.enable") ?? "Enable Auto-Tile"),
+                "action": "toggle",
+                "icon": isEnabled ? "media-playback-pause" : "media-playback-start"
+            });
+            items.push({
+                "label": pluginApi?.tr("bar.settings") ?? "Settings",
+                "action": "widget-settings",
+                "icon": "settings"
+            });
+            return items;
+        }
+
+        onTriggered: action => {
+            contextMenu.close();
+            PanelService.closeContextMenu(screen);
+
+            if (action === "widget-settings") {
+                BarService.openPluginSettings(screen, pluginApi.manifest);
+            } else if (action === "toggle" && mainInstance) {
+                mainInstance.setMaxVisible(isEnabled ? 0 : 4);
+                const newState = !isEnabled;
+                if (pluginApi?.pluginSettings) {
+                    pluginApi.pluginSettings.enabled = newState;
+                    pluginApi.saveSettings();
+                }
+            }
+        }
+    }
+
+    MouseArea {
+        id: mouseArea
+        anchors.fill: parent
+        hoverEnabled: true
+        cursorShape: Qt.PointingHandCursor
+        acceptedButtons: Qt.LeftButton | Qt.RightButton
+
+        onClicked: (mouse) => {
+            if (mouse.button === Qt.LeftButton) {
+                if (pluginApi) {
+                    pluginApi.togglePanel(root.screen, root);
+                }
+            } else if (mouse.button === Qt.RightButton) {
+                PanelService.showContextMenu(contextMenu, root, screen);
+            }
+        }
     }
 }

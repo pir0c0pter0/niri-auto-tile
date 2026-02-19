@@ -24,6 +24,12 @@ Singleton {
         }
     }
 
+    onMaxVisibleChanged: {
+        if (running) {
+            restartDaemon();
+        }
+    }
+
     Component.onCompleted: {
         if (enabled) {
             startDaemon();
@@ -47,6 +53,14 @@ Singleton {
     function restartDaemon() {
         stopDaemon();
         Qt.callLater(startDaemon);
+    }
+
+    function setMaxVisible(count) {
+        if (count < 1 || count > 8) return;
+        if (pluginApi?.pluginSettings) {
+            pluginApi.pluginSettings.maxVisible = count;
+            pluginApi.saveSettings();
+        }
     }
 
     readonly property Process daemonProcess: Process {
@@ -107,6 +121,10 @@ Singleton {
                 pluginApi.pluginSettings.enabled = newState;
                 pluginApi.saveSettings();
             }
+        }
+
+        function setColumns(count) {
+            root.setMaxVisible(count);
         }
 
         function status() {
