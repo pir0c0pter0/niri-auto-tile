@@ -1,4 +1,20 @@
 {
+  "panel": {
+    "title": "Layout de Colunas",
+    "single": "Única",
+    "columns": "%1 Colunas",
+    "status-active": "Ativo — %1 colunas",
+    "status-starting": "Iniciando...",
+    "status-disabled": "Desativado"
+  },
+  "bar": {
+    "running": "Auto-Tile: executando (%1 colunas)",
+    "starting": "Auto-Tile: iniciando...",
+    "disabled": "Auto-Tile: desativado",
+    "enable": "Ativar Auto-Tile",
+    "disable": "Desativar Auto-Tile",
+    "settings": "Configurações"
+  },
   "settings": {
     "enabled": "Ativar Auto-Tile",
     "enabled-desc": "Redistribuir automaticamente as larguras das colunas ao abrir ou fechar janelas",
@@ -11,10 +27,5 @@
     "status-running": "Daemon em execução",
     "status-error": "Erro no daemon — reiniciando...",
     "status-stopped": "Daemon parado"
-  },
-  "bar": {
-    "running": "Auto-Tile: executando (%1 colunas)",
-    "starting": "Auto-Tile: iniciando...",
-    "disabled": "Auto-Tile: desativado"
   }
 }

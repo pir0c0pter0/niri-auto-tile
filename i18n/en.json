@@ -1,4 +1,20 @@
 {
+  "panel": {
+    "title": "Column Layout",
+    "single": "Single",
+    "columns": "%1 Columns",
+    "status-active": "Active — %1 columns",
+    "status-starting": "Starting...",
+    "status-disabled": "Disabled"
+  },
+  "bar": {
+    "running": "Auto-Tile: running (%1 cols)",
+    "starting": "Auto-Tile: starting...",
+    "disabled": "Auto-Tile: disabled",
+    "enable": "Enable Auto-Tile",
+    "disable": "Disable Auto-Tile",
+    "settings": "Settings"
+  },
   "settings": {
     "enabled": "Enable Auto-Tile",
     "enabled-desc": "Automatically redistribute column widths when windows open or close",
@@ -11,10 +27,5 @@
     "status-running": "Daemon running",
     "status-error": "Daemon error — restarting...",
     "status-stopped": "Daemon stopped"
-  },
-  "bar": {
-    "running": "Auto-Tile: running (%1 cols)",
-    "starting": "Auto-Tile: starting...",
-    "disabled": "Auto-Tile: disabled"
   }
 }
