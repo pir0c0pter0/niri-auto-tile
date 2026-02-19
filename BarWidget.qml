@@ -61,9 +61,7 @@ Item {
                     width: 4
                     height: root.capsuleHeight * 0.5
                     radius: 1
-                    color: mouseArea.containsMouse
-                        ? Color.mOnHover
-                        : (isRunning ? Color.mPrimary : Color.mOnSurface)
+                    color: mouseArea.containsMouse ? Color.mOnHover : Color.mOnSurface
                 }
             }
         }
@@ -78,7 +76,7 @@ Item {
         height: 4
         radius: 2
         visible: isEnabled
-        color: isRunning ? "#4caf50" : "#ff9800"
+        color: isRunning ? Color.mPrimary : Color.mSecondary
     }
 
     NPopupContextMenu {
