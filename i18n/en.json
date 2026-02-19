@@ -3,8 +3,6 @@
     "title": "Column Layout",
     "single": "Single",
     "columns": "%1 Columns",
-    "per-workspace": "Per workspace",
-    "only-at-max": "Only at max",
     "status-active": "Active — %1 columns",
     "status-starting": "Starting...",
     "status-disabled": "Disabled"
@@ -20,16 +18,21 @@
   "settings": {
     "enabled": "Enable Auto-Tile",
     "enabled-desc": "Automatically redistribute column widths when windows open or close",
-    "max-visible": "Max visible columns",
-    "max-visible-desc": "Maximum number of columns visible on screen at once",
     "per-workspace": "Per workspace",
     "per-workspace-desc": "Each workspace has its own column count setting",
+    "only-at-max": "Only at max",
+    "only-at-max-desc": "Only redistribute when column count reaches the maximum",
+    "max-visible": "Max visible columns",
+    "max-visible-desc": "Maximum number of columns visible on screen at once",
     "debounce": "Debounce delay",
     "debounce-desc": "Delay before redistribution to coalesce rapid events",
     "rate-limit": "Rate limit",
     "rate-limit-desc": "Maximum events processed per second",
     "status-running": "Daemon running",
     "status-error": "Daemon error — restarting...",
-    "status-stopped": "Daemon stopped"
+    "status-stopped": "Daemon stopped",
+    "about-title": "About",
+    "about-credit": "Developed by MJr using Claude",
+    "about-date": "Date"
   }
 }

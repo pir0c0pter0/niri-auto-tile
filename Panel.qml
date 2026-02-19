@@ -10,7 +10,7 @@ Item {
     property var pluginApi: null
     readonly property var geometryPlaceholder: panelContainer
     property real contentPreferredWidth: 300 * Style.uiScaleRatio
-    property real contentPreferredHeight: 350 * Style.uiScaleRatio
+    property real contentPreferredHeight: 280 * Style.uiScaleRatio
     readonly property bool allowAttach: true
 
     anchors.fill: parent
@@ -19,7 +19,6 @@ Item {
     readonly property bool isRunning: mainInstance?.running ?? false
     readonly property bool isEnabled: mainInstance?.enabled ?? false
     readonly property bool perWorkspace: mainInstance?.perWorkspace ?? false
-    readonly property bool onlyAtMax: mainInstance?.onlyAtMax ?? true
     readonly property int globalMaxVisible: mainInstance?.maxVisible ?? 4
 
     // Current workspace detection
@@ -107,62 +106,10 @@ Item {
 
                         NToggle {
                             checked: root.isEnabled
-                            onCheckedChanged: {
-                                if (pluginApi?.pluginSettings && pluginApi.pluginSettings.enabled !== checked) {
+                            onToggled: checked => {
+                                if (pluginApi?.pluginSettings) {
                                     pluginApi.pluginSettings.enabled = checked;
                                     pluginApi.saveSettings();
-                                }
-                            }
-                        }
-                    }
-
-                    // ─── Per-workspace toggle ───
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Style.marginS
-
-                        NText {
-                            text: pluginApi?.tr("panel.per-workspace") ?? "Per workspace"
-                            pointSize: Style.fontSizeS
-                            color: Qt.alpha(Color.mOnSurface, 0.7)
-                            Layout.fillWidth: true
-                        }
-
-                        NText {
-                            visible: root.perWorkspace && root.currentWorkspaceId > 0
-                            text: "WS " + root.currentWorkspaceId
-                            pointSize: Style.fontSizeS
-                            font.bold: true
-                            color: Color.mPrimary
-                        }
-
-                        NToggle {
-                            checked: root.perWorkspace
-                            onCheckedChanged: {
-                                if (mainInstance && root.perWorkspace !== checked) {
-                                    mainInstance.setPerWorkspace(checked);
-                                }
-                            }
-                        }
-                    }
-
-                    // ─── Only at max toggle ───
-                    RowLayout {
-                        Layout.fillWidth: true
-                        spacing: Style.marginS
-
-                        NText {
-                            text: pluginApi?.tr("panel.only-at-max") ?? "Only at max"
-                            pointSize: Style.fontSizeS
-                            color: Qt.alpha(Color.mOnSurface, 0.7)
-                            Layout.fillWidth: true
-                        }
-
-                        NToggle {
-                            checked: root.onlyAtMax
-                            onCheckedChanged: {
-                                if (mainInstance && root.onlyAtMax !== checked) {
-                                    mainInstance.setOnlyAtMax(checked);
                                 }
                             }
                         }
@@ -269,8 +216,8 @@ Item {
                             radius: 4
                             color: {
                                 if (!root.isEnabled) return Color.mOutline;
-                                if (root.isRunning) return "#4caf50";
-                                return "#ff9800";
+                                if (root.isRunning) return Color.mPrimary;
+                                return Color.mSecondary;
                             }
                         }
 

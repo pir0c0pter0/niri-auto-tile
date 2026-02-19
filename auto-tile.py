@@ -102,15 +102,40 @@ def get_focused_workspace() -> tuple[int | None, int | None]:
     """Get (workspace_id, focused_window_id)."""
     raw = niri_cmd("-j", "focused-window")
     if not raw:
-        return None, None
+        return _get_active_workspace_id(), None
     try:
         data = json.loads(raw)
         if not isinstance(data, dict):
-            return None, None
-        return _valid_id(data.get("workspace_id")), _valid_id(data.get("id"))
+            return _get_active_workspace_id(), None
+        ws_id = _valid_id(data.get("workspace_id"))
+        win_id = _valid_id(data.get("id"))
+        if ws_id is None:
+            ws_id = _get_active_workspace_id()
+        return ws_id, win_id
     except json.JSONDecodeError:
         log.warning("failed to parse focused-window JSON")
-        return None, None
+        return _get_active_workspace_id(), None
+
+
+def _get_active_workspace_id() -> int | None:
+    """Get the active workspace ID from niri workspaces list (fallback)."""
+    raw = niri_cmd("-j", "workspaces")
+    if not raw:
+        return None
+    try:
+        workspaces = json.loads(raw)
+        if not isinstance(workspaces, list):
+            return None
+        for ws in workspaces:
+            if isinstance(ws, dict) and ws.get("is_active") and ws.get("is_focused"):
+                return _valid_id(ws.get("id"))
+        # Fallback: just active
+        for ws in workspaces:
+            if isinstance(ws, dict) and ws.get("is_focused"):
+                return _valid_id(ws.get("id"))
+        return None
+    except json.JSONDecodeError:
+        return None
 
 
 def _get_windows() -> list[dict]:
@@ -201,7 +226,7 @@ def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
     remainder = 100 - (base_pct * visible)
     log.info("ws=%d: %d cols, max=%d -> %d%% each (+%d%% last)", ws_id, col_count, max_vis, base_pct, remainder)
 
-    # Focus a window on this workspace first
+    # Focus a window on this workspace to operate on it
     windows = _get_windows()
     ws_window_id = None
     for w in windows:
@@ -225,22 +250,27 @@ def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
     niri_action("focus-column-first")
     niri_action("center-visible-columns")
 
-    # Restore original focus
-    if focused_id is not None:
-        niri_action("focus-window", "--id", str(focused_id))
-        niri_action("center-visible-columns")
-
 
 def redistribute() -> None:
-    """Redistribute all columns evenly, only if column count changed."""
-    ws_id, focused_id = get_focused_workspace()
+    """Redistribute all active workspaces, restoring original focus afterwards."""
+    original_ws, original_focused = get_focused_workspace()
 
-    if ws_id is not None:
-        _redistribute_workspace(ws_id, focused_id)
-    else:
-        # No focused window (e.g. panel has focus) — redistribute all active workspaces
-        for active_ws in get_active_workspaces():
-            _redistribute_workspace(active_ws, None)
+    for active_ws in get_active_workspaces():
+        _redistribute_workspace(active_ws, None)
+
+    # Restore focus to the original window/workspace
+    if original_focused is not None:
+        niri_action("focus-window", "--id", str(original_focused))
+        niri_action("center-visible-columns")
+    elif original_ws is not None:
+        # No focused window (e.g. panel open) — focus any window on original workspace
+        for w in _get_windows():
+            if w.get("workspace_id") == original_ws and not w.get("is_floating", False):
+                win_id = _valid_id(w.get("id"))
+                if win_id is not None:
+                    niri_action("focus-window", "--id", str(win_id))
+                    niri_action("center-visible-columns")
+                    break
 
 
 def debounced_redistribute() -> None:

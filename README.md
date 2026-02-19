@@ -20,15 +20,19 @@ Niri is a scrollable-tiling Wayland compositor where windows are arranged in col
 ### Features
 
 - **Automatic redistribution** — columns resize instantly on window open/close
+- **Multi-workspace support** — redistributes all active workspaces, restoring original focus afterwards
 - **Configurable max visible columns** — caps how many columns fit on screen (default: 4)
+- **Per-workspace settings** — each workspace can have its own column count
+- **Only at max mode** — only redistribute when column count reaches the configured maximum
 - **Smart event filtering** — only reacts to actual window open/close, ignores title changes (e.g., browser tab switches)
-- **Per-workspace state** — independent column tracking per workspace
+- **Theme-aware UI** — all colors follow the active Noctalia theme (no hardcoded colors)
 - **Thread-safe debouncing** — coalesces rapid events to prevent flickering
 - **Rate limiting** — circuit breaker for event floods (20 events/second cap)
 - **Auto-reconnection** — recovers if the niri event stream drops
 - **Graceful shutdown** — handles SIGTERM cleanly
 - **JSON IPC** — uses niri's structured JSON protocol, not fragile text parsing
 - **Input validation** — validates all IPC responses and data types
+- **i18n** — English and Portuguese translations
 
 ---
 
@@ -57,7 +61,7 @@ Niri is a scrollable-tiling Wayland compositor where windows are arranged in col
 
 ### Noctalia Shell Plugin
 
-If you use [noctalia-shell](https://github.com/noctalia-dev/noctalia-shell), this project includes a native plugin with a bar indicator and settings UI:
+If you use [noctalia-shell](https://github.com/noctalia-dev/noctalia-shell), this project includes a native plugin with a bar indicator, floating panel, and settings UI:
 
 1. **Clone into the plugins directory:**
 
@@ -97,9 +101,50 @@ systemctl --user enable --now niri-auto-tile.service
 
 ---
 
+## Noctalia Plugin UI
+
+### Bar Widget
+
+- Column indicators showing the current max visible count
+- Status dot (theme primary = running, theme secondary = starting)
+- Left-click opens the floating panel
+- Right-click context menu: enable/disable, settings
+
+### Floating Panel
+
+- Enable/disable toggle in the header
+- Visual column layout selector (1-4 columns grid)
+- Status bar with current state and workspace info
+
+### Settings
+
+- **Enable Auto-Tile** — master on/off switch
+- **Per workspace** — each workspace has its own column count
+- **Only at max** — only redistribute when columns reach the maximum
+- **Max visible columns** — slider from 1 to 8
+- **Debounce delay** — 100-1000ms event coalescence
+- **Rate limit** — 5-50 events per second
+- **Daemon status** — running/error/stopped indicator
+- **About** — credits and version info
+
+---
+
 ## Configuration
 
-Edit the constants at the top of `auto-tile.py`:
+### CLI Arguments
+
+```bash
+python3 auto-tile.py \
+  --max-visible 4 \
+  --debounce 0.3 \
+  --max-events 20 \
+  --only-at-max \
+  --per-workspace \
+  --workspace-config '{"3":2,"1":4}' \
+  --debug
+```
+
+### Configuration Variables
 
 | Variable | Default | Description |
 |----------|---------|-------------|
@@ -109,6 +154,8 @@ Edit the constants at the top of `auto-tile.py`:
 | `NIRI_TIMEOUT` | `5` | Timeout for niri IPC calls (seconds) |
 | `RECONNECT_DELAY` | `2.0` | Delay before reconnecting after event stream drops |
 | `MAX_EVENTS_PER_SECOND` | `20` | Rate limiter threshold |
+| `PER_WORKSPACE` | `False` | Per-workspace column count settings |
+| `ONLY_AT_MAX` | `True` | Only redistribute at or above max visible |
 
 ### Recommended niri layout
 
@@ -144,20 +191,30 @@ niri event-stream (JSON)
    Debounce Timer        — 300ms coalescence
          |
          v
-   Workspace Verify      — confirm workspace hasn't changed
+   Save Original Focus   — remember current workspace and focused window
          |
          v
-   Redistribute          — set-column-width for each column
+   Redistribute All      — set-column-width for each column on every active workspace
          |
          v
-   Restore Focus         — return focus to original window
+   Restore Focus         — return to original workspace and window
 ```
+
+### Multi-Workspace Redistribution
+
+When a window event triggers redistribution:
+
+1. The daemon saves the currently focused workspace and window
+2. Iterates through all active workspaces with tiled windows
+3. For each workspace, focuses a window there, walks columns, and sets equal widths
+4. After all workspaces are processed, restores focus to the original window
+5. If no window was focused (e.g., panel was open), falls back to focusing any window on the original workspace via `niri msg -j workspaces`
 
 ### Event Filtering
 
 The script maintains a set of known window IDs. When `WindowOpenedOrChanged` fires:
-- If the window ID is **new** → trigger redistribution
-- If the window ID **already exists** → it's just a title change, skip
+- If the window ID is **new** -> trigger redistribution
+- If the window ID **already exists** -> it's just a title change, skip
 
 This prevents the flickering that would occur with apps like Firefox that fire `WindowOpenedOrChanged` on every tab switch or page load.
 
@@ -182,10 +239,9 @@ The last column absorbs any rounding remainder to ensure widths sum to exactly 1
 The script logs to stdout with structured messages:
 
 ```
-18:07:44 INFO auto-tile: starting (max_visible=4, debounce=300ms)
+18:07:44 INFO auto-tile: starting (max_visible=4, mode=global, debounce=300ms)
 18:07:44 INFO auto-tile: tracking 4 existing windows
-18:07:44 INFO auto-tile: ws=3 initial cols=4
-18:08:01 INFO auto-tile: ws=3: 3 cols -> 33% each (+1% last)
+18:08:01 INFO auto-tile: ws=3: 4 cols, max=4 -> 25% each (+0% last)
 ```
 
 When using systemd, view logs with:
@@ -257,8 +313,11 @@ Contributions welcome! Please:
 
 ---
 
+## Credits
+
+Developed by MJr using [Claude Code](https://claude.ai/claude-code).
+
 ## Acknowledgements
 
 - [niri](https://github.com/YaLTeR/niri) by YaLTeR — the scrollable-tiling Wayland compositor
 - [noctalia-shell](https://github.com/noctalia-dev/noctalia-shell) — the desktop shell framework
-- Built with assistance from [Claude Code](https://claude.ai/claude-code)
