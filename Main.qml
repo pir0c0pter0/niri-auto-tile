@@ -12,10 +12,20 @@ Item {
 
     readonly property bool enabled: pluginApi?.pluginSettings?.enabled ?? true
     readonly property int maxVisible: pluginApi?.pluginSettings?.maxVisible ?? 4
+    readonly property bool perWorkspace: pluginApi?.pluginSettings?.perWorkspace ?? false
+    readonly property bool onlyAtMax: pluginApi?.pluginSettings?.onlyAtMax ?? true
+    readonly property var workspaceMaxVisible: pluginApi?.pluginSettings?.workspaceMaxVisible ?? ({})
     readonly property int debounceMs: pluginApi?.pluginSettings?.debounceMs ?? 300
     readonly property int maxEventsPerSecond: pluginApi?.pluginSettings?.maxEventsPerSecond ?? 20
 
     readonly property string scriptPath: (pluginApi?.pluginDir ?? "") + "/auto-tile.py"
+
+    // Serialize workspace config as JSON string for CLI
+    function workspaceConfigJson() {
+        const cfg = workspaceMaxVisible;
+        if (!cfg || typeof cfg !== "object") return "{}";
+        return JSON.stringify(cfg);
+    }
 
     onEnabledChanged: {
         if (enabled) {
@@ -27,15 +37,19 @@ Item {
     }
 
     onMaxVisibleChanged: {
-        if (running) {
-            restartDaemon();
-        }
+        if (running) restartDaemon();
+    }
+
+    onPerWorkspaceChanged: {
+        if (running) restartDaemon();
+    }
+
+    onOnlyAtMaxChanged: {
+        if (running) restartDaemon();
     }
 
     Component.onCompleted: {
-        if (enabled) {
-            startDaemon();
-        }
+        if (enabled) startDaemon();
     }
 
     Component.onDestruction: {
@@ -60,19 +74,64 @@ Item {
 
     function setMaxVisible(count) {
         if (count < 1 || count > 8) return;
-        if (pluginApi?.pluginSettings) {
-            pluginApi.pluginSettings.maxVisible = count;
-            pluginApi.saveSettings();
+        if (!pluginApi?.pluginSettings) return;
+        pluginApi.pluginSettings.maxVisible = count;
+        pluginApi.saveSettings();
+    }
+
+    function setWorkspaceMaxVisible(wsId, count) {
+        if (count < 1 || count > 8) return;
+        if (!pluginApi?.pluginSettings) return;
+        let cfg = pluginApi.pluginSettings.workspaceMaxVisible;
+        if (!cfg || typeof cfg !== "object") cfg = {};
+        // Create new object (immutable pattern)
+        const updated = Object.assign({}, cfg);
+        updated[String(wsId)] = count;
+        pluginApi.pluginSettings.workspaceMaxVisible = updated;
+        pluginApi.saveSettings();
+        if (running) restartDaemon();
+    }
+
+    function setPerWorkspace(value) {
+        if (!pluginApi?.pluginSettings) return;
+        pluginApi.pluginSettings.perWorkspace = value;
+        pluginApi.saveSettings();
+    }
+
+    function setOnlyAtMax(value) {
+        if (!pluginApi?.pluginSettings) return;
+        pluginApi.pluginSettings.onlyAtMax = value;
+        pluginApi.saveSettings();
+    }
+
+    function getMaxVisibleForWorkspace(wsId) {
+        if (perWorkspace) {
+            const cfg = workspaceMaxVisible;
+            if (cfg && typeof cfg === "object" && String(wsId) in cfg) {
+                return cfg[String(wsId)];
+            }
         }
+        return maxVisible;
     }
 
     readonly property Process daemonProcess: Process {
-        command: [
-            "python3", root.scriptPath,
-            "--max-visible", String(root.maxVisible),
-            "--debounce", String(root.debounceMs / 1000.0),
-            "--max-events", String(root.maxEventsPerSecond)
-        ]
+        command: {
+            const args = [
+                "python3", root.scriptPath,
+                "--max-visible", String(root.maxVisible),
+                "--debounce", String(root.debounceMs / 1000.0),
+                "--max-events", String(root.maxEventsPerSecond)
+            ];
+            if (root.onlyAtMax) {
+                args.push("--only-at-max");
+            }
+            if (root.perWorkspace) {
+                args.push("--per-workspace");
+                args.push("--workspace-config");
+                args.push(root.workspaceConfigJson());
+            }
+            return args;
+        }
 
         running: false
 
@@ -141,7 +200,8 @@ Item {
                 running: root.running,
                 enabled: root.enabled,
                 status: root.status,
-                maxVisible: root.maxVisible
+                maxVisible: root.maxVisible,
+                perWorkspace: root.perWorkspace
             };
         }
     }

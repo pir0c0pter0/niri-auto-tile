@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import Quickshell.Io
 import qs.Commons
 import qs.Widgets
 
@@ -9,7 +10,7 @@ Item {
     property var pluginApi: null
     readonly property var geometryPlaceholder: panelContainer
     property real contentPreferredWidth: 300 * Style.uiScaleRatio
-    property real contentPreferredHeight: 260 * Style.uiScaleRatio
+    property real contentPreferredHeight: 350 * Style.uiScaleRatio
     readonly property bool allowAttach: true
 
     anchors.fill: parent
@@ -17,7 +18,51 @@ Item {
     readonly property var mainInstance: pluginApi?.mainInstance
     readonly property bool isRunning: mainInstance?.running ?? false
     readonly property bool isEnabled: mainInstance?.enabled ?? false
-    readonly property int currentMaxVisible: mainInstance?.maxVisible ?? 4
+    readonly property bool perWorkspace: mainInstance?.perWorkspace ?? false
+    readonly property bool onlyAtMax: mainInstance?.onlyAtMax ?? true
+    readonly property int globalMaxVisible: mainInstance?.maxVisible ?? 4
+
+    // Current workspace detection
+    property int currentWorkspaceId: -1
+    property int currentMaxVisible: {
+        if (perWorkspace && currentWorkspaceId > 0 && mainInstance) {
+            return mainInstance.getMaxVisibleForWorkspace(currentWorkspaceId);
+        }
+        return globalMaxVisible;
+    }
+
+    // Query current workspace when panel becomes visible
+    Component.onCompleted: queryWorkspace()
+    onVisibleChanged: { if (visible) queryWorkspace(); }
+
+    function queryWorkspace() {
+        wsQueryProcess.running = true;
+    }
+
+    Process {
+        id: wsQueryProcess
+        command: ["niri", "msg", "-j", "focused-window"]
+        running: false
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const data = JSON.parse(text);
+                    if (data && typeof data === "object" && data.workspace_id) {
+                        root.currentWorkspaceId = data.workspace_id;
+                    }
+                } catch (e) {}
+            }
+        }
+    }
+
+    function selectColumns(count) {
+        if (!mainInstance) return;
+        if (perWorkspace && currentWorkspaceId > 0) {
+            mainInstance.setWorkspaceMaxVisible(currentWorkspaceId, count);
+        } else {
+            mainInstance.setMaxVisible(count);
+        }
+    }
 
     Rectangle {
         id: panelContainer
@@ -38,7 +83,7 @@ Item {
                 ColumnLayout {
                     anchors.fill: parent
                     anchors.margins: Style.marginM
-                    spacing: Style.marginL
+                    spacing: Style.marginM
                     clip: true
 
                     // ─── Header ───
@@ -55,18 +100,69 @@ Item {
                         NText {
                             text: pluginApi?.tr("panel.title") ?? "Column Layout"
                             pointSize: Style.fontSizeL
-                            font.weight: Style.fontWeightBold
+                            font.bold: true
                             color: Color.mOnSurface
                             Layout.fillWidth: true
                         }
 
-                        // Enable/disable toggle
                         NToggle {
                             checked: root.isEnabled
                             onCheckedChanged: {
                                 if (pluginApi?.pluginSettings && pluginApi.pluginSettings.enabled !== checked) {
                                     pluginApi.pluginSettings.enabled = checked;
                                     pluginApi.saveSettings();
+                                }
+                            }
+                        }
+                    }
+
+                    // ─── Per-workspace toggle ───
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Style.marginS
+
+                        NText {
+                            text: pluginApi?.tr("panel.per-workspace") ?? "Per workspace"
+                            pointSize: Style.fontSizeS
+                            color: Qt.alpha(Color.mOnSurface, 0.7)
+                            Layout.fillWidth: true
+                        }
+
+                        NText {
+                            visible: root.perWorkspace && root.currentWorkspaceId > 0
+                            text: "WS " + root.currentWorkspaceId
+                            pointSize: Style.fontSizeS
+                            font.bold: true
+                            color: Color.mPrimary
+                        }
+
+                        NToggle {
+                            checked: root.perWorkspace
+                            onCheckedChanged: {
+                                if (mainInstance && root.perWorkspace !== checked) {
+                                    mainInstance.setPerWorkspace(checked);
+                                }
+                            }
+                        }
+                    }
+
+                    // ─── Only at max toggle ───
+                    RowLayout {
+                        Layout.fillWidth: true
+                        spacing: Style.marginS
+
+                        NText {
+                            text: pluginApi?.tr("panel.only-at-max") ?? "Only at max"
+                            pointSize: Style.fontSizeS
+                            color: Qt.alpha(Color.mOnSurface, 0.7)
+                            Layout.fillWidth: true
+                        }
+
+                        NToggle {
+                            checked: root.onlyAtMax
+                            onCheckedChanged: {
+                                if (mainInstance && root.onlyAtMax !== checked) {
+                                    mainInstance.setOnlyAtMax(checked);
                                 }
                             }
                         }
@@ -92,7 +188,7 @@ Item {
 
                                 Layout.fillWidth: true
                                 Layout.fillHeight: true
-                                Layout.minimumHeight: 60
+                                Layout.minimumHeight: 50
 
                                 radius: Style.iRadiusM
                                 color: isSelected ? Qt.alpha(Color.mPrimary, 0.15) : Color.mSurfaceVariant
@@ -155,9 +251,7 @@ Item {
                                     cursorShape: Qt.PointingHandCursor
 
                                     onClicked: {
-                                        if (root.mainInstance) {
-                                            root.mainInstance.setMaxVisible(layoutOption.columnCount);
-                                        }
+                                        root.selectColumns(layoutOption.columnCount);
                                     }
                                 }
                             }
@@ -183,7 +277,13 @@ Item {
                         NText {
                             text: {
                                 if (!root.isEnabled) return pluginApi?.tr("panel.status-disabled") ?? "Disabled";
-                                if (root.isRunning) return (pluginApi?.tr("panel.status-active") ?? "Active — %1 columns").arg(root.currentMaxVisible);
+                                if (root.isRunning) {
+                                    const label = (pluginApi?.tr("panel.status-active") ?? "Active — %1 columns").arg(root.currentMaxVisible);
+                                    if (root.perWorkspace && root.currentWorkspaceId > 0) {
+                                        return label + " (WS " + root.currentWorkspaceId + ")";
+                                    }
+                                    return label;
+                                }
                                 return pluginApi?.tr("panel.status-starting") ?? "Starting...";
                             }
                             pointSize: Style.fontSizeS

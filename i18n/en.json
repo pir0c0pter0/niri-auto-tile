@@ -3,6 +3,8 @@
     "title": "Column Layout",
     "single": "Single",
     "columns": "%1 Columns",
+    "per-workspace": "Per workspace",
+    "only-at-max": "Only at max",
     "status-active": "Active — %1 columns",
     "status-starting": "Starting...",
     "status-disabled": "Disabled"
@@ -20,6 +22,8 @@
     "enabled-desc": "Automatically redistribute column widths when windows open or close",
     "max-visible": "Max visible columns",
     "max-visible-desc": "Maximum number of columns visible on screen at once",
+    "per-workspace": "Per workspace",
+    "per-workspace-desc": "Each workspace has its own column count setting",
     "debounce": "Debounce delay",
     "debounce-desc": "Delay before redistribution to coalesce rapid events",
     "rate-limit": "Rate limit",
