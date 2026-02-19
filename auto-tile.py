@@ -104,6 +104,8 @@ def get_focused_workspace() -> tuple[int | None, int | None]:
         return None, None
     try:
         data = json.loads(raw)
+        if not isinstance(data, dict):
+            return None, None
         return _valid_id(data.get("workspace_id")), _valid_id(data.get("id"))
     except json.JSONDecodeError:
         log.warning("failed to parse focused-window JSON")
@@ -235,14 +237,21 @@ def should_redistribute(event: dict) -> bool:
     global _known_window_ids
 
     if "WindowClosed" in event:
-        win_id = event["WindowClosed"].get("id")
-        if win_id is not None:
-            with _lock:
-                _known_window_ids.discard(win_id)
+        closed = event["WindowClosed"]
+        if isinstance(closed, dict):
+            win_id = closed.get("id")
+            if win_id is not None:
+                with _lock:
+                    _known_window_ids.discard(win_id)
         return True
 
     if "WindowOpenedOrChanged" in event:
-        window = event["WindowOpenedOrChanged"].get("window", {})
+        payload = event["WindowOpenedOrChanged"]
+        if not isinstance(payload, dict):
+            return False
+        window = payload.get("window") or {}
+        if not isinstance(window, dict):
+            return False
         win_id = window.get("id")
         if win_id is not None:
             with _lock:
@@ -254,7 +263,10 @@ def should_redistribute(event: dict) -> bool:
 
     if "WindowsChanged" in event:
         # Batch event (startup) — sync known IDs
-        windows = event["WindowsChanged"].get("windows") or []
+        changed = event["WindowsChanged"]
+        if not isinstance(changed, dict):
+            return False
+        windows = changed.get("windows") or []
         if not isinstance(windows, list):
             return False
         new_ids = {w["id"] for w in windows if isinstance(w, dict) and "id" in w}

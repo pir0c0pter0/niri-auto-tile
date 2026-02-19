@@ -2,7 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 
-Singleton {
+Item {
     id: root
 
     property var pluginApi: null
@@ -123,7 +123,7 @@ Singleton {
             }
         }
 
-        function setColumns(count) {
+        function setColumns(count: int) {
             root.setMaxVisible(count);
         }
 

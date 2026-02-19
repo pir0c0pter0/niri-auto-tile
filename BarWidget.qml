@@ -91,12 +91,12 @@ Item {
                     ? (pluginApi?.tr("bar.disable") ?? "Disable Auto-Tile")
                     : (pluginApi?.tr("bar.enable") ?? "Enable Auto-Tile"),
                 "action": "toggle",
-                "icon": isEnabled ? "media-playback-pause" : "media-playback-start"
+                "icon": isEnabled ? "player-pause" : "player-play"
             });
             items.push({
                 "label": pluginApi?.tr("bar.settings") ?? "Settings",
                 "action": "widget-settings",
-                "icon": "settings"
+                "icon": "flask"
             });
             return items;
         }
