@@ -1,0 +1,20 @@
+{
+  "settings": {
+    "enabled": "Enable Auto-Tile",
+    "enabled-desc": "Automatically redistribute column widths when windows open or close",
+    "max-visible": "Max visible columns",
+    "max-visible-desc": "Maximum number of columns visible on screen at once",
+    "debounce": "Debounce delay",
+    "debounce-desc": "Delay before redistribution to coalesce rapid events",
+    "rate-limit": "Rate limit",
+    "rate-limit-desc": "Maximum events processed per second",
+    "status-running": "Daemon running",
+    "status-error": "Daemon error — restarting...",
+    "status-stopped": "Daemon stopped"
+  },
+  "bar": {
+    "running": "Auto-Tile: running (%1 cols)",
+    "starting": "Auto-Tile: starting...",
+    "disabled": "Auto-Tile: disabled"
+  }
+}
