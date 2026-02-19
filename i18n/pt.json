@@ -1,0 +1,20 @@
+{
+  "settings": {
+    "enabled": "Ativar Auto-Tile",
+    "enabled-desc": "Redistribuir automaticamente as larguras das colunas ao abrir ou fechar janelas",
+    "max-visible": "Colunas visíveis",
+    "max-visible-desc": "Número máximo de colunas visíveis na tela simultaneamente",
+    "debounce": "Atraso de debounce",
+    "debounce-desc": "Atraso antes da redistribuição para agrupar eventos rápidos",
+    "rate-limit": "Limite de eventos",
+    "rate-limit-desc": "Máximo de eventos processados por segundo",
+    "status-running": "Daemon em execução",
+    "status-error": "Erro no daemon — reiniciando...",
+    "status-stopped": "Daemon parado"
+  },
+  "bar": {
+    "running": "Auto-Tile: executando (%1 colunas)",
+    "starting": "Auto-Tile: iniciando...",
+    "disabled": "Auto-Tile: desativado"
+  }
+}
