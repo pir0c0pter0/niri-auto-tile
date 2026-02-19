@@ -153,12 +153,20 @@ def get_all_window_ids() -> set[int]:
 
 
 # ─── Core Logic ───
-def redistribute() -> None:
-    """Redistribute all columns evenly, only if column count changed."""
-    ws_id, focused_id = get_focused_workspace()
-    if ws_id is None:
-        return
+def get_active_workspaces() -> set[int]:
+    """Get set of workspace IDs that have tiled windows."""
+    ws_ids: set[int] = set()
+    for w in _get_windows():
+        if w.get("is_floating", False):
+            continue
+        ws = _valid_id(w.get("workspace_id"))
+        if ws is not None:
+            ws_ids.add(ws)
+    return ws_ids
 
+
+def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
+    """Redistribute columns on a single workspace."""
     col_count = count_columns(ws_id)
     if col_count == 0:
         return
@@ -174,18 +182,22 @@ def redistribute() -> None:
             return
         _prev_col_counts[ws_id] = col_count
 
-    # Re-verify workspace hasn't changed before applying actions
-    current_ws, _ = get_focused_workspace()
-    if current_ws != ws_id:
-        log.debug("workspace changed %d -> %s during redistribute, skipping", ws_id, current_ws)
-        with _lock:
-            _prev_col_counts.pop(ws_id, None)
-        return
-
     visible = min(col_count, MAX_VISIBLE)
     base_pct = 100 // visible
     remainder = 100 - (base_pct * visible)
     log.info("ws=%d: %d cols -> %d%% each (+%d%% last)", ws_id, col_count, base_pct, remainder)
+
+    # Focus a window on this workspace first
+    windows = _get_windows()
+    ws_window_id = None
+    for w in windows:
+        if w.get("workspace_id") == ws_id and not w.get("is_floating", False):
+            ws_window_id = _valid_id(w.get("id"))
+            if ws_window_id is not None:
+                break
+
+    if ws_window_id is not None:
+        niri_action("focus-window", "--id", str(ws_window_id))
 
     # Walk columns and set widths
     niri_action("focus-column-first")
@@ -203,6 +215,18 @@ def redistribute() -> None:
     if focused_id is not None:
         niri_action("focus-window", "--id", str(focused_id))
         niri_action("center-visible-columns")
+
+
+def redistribute() -> None:
+    """Redistribute all columns evenly, only if column count changed."""
+    ws_id, focused_id = get_focused_workspace()
+
+    if ws_id is not None:
+        _redistribute_workspace(ws_id, focused_id)
+    else:
+        # No focused window (e.g. panel has focus) — redistribute all active workspaces
+        for active_ws in get_active_workspaces():
+            _redistribute_workspace(active_ws, None)
 
 
 def debounced_redistribute() -> None:
@@ -294,12 +318,10 @@ def run_event_loop() -> None:
         _known_window_ids = get_all_window_ids()
     log.info("tracking %d existing windows", len(_known_window_ids))
 
-    # Initialize per-workspace column counts
-    ws_id, _ = get_focused_workspace()
-    if ws_id is not None:
-        with _lock:
-            _prev_col_counts[ws_id] = count_columns(ws_id)
-        log.info("ws=%d initial cols=%d", ws_id, _prev_col_counts.get(ws_id, 0))
+    # Force immediate redistribution on startup
+    with _lock:
+        _prev_col_counts.clear()
+    redistribute()
 
     proc = subprocess.Popen(
         ["niri", "msg", "-j", "event-stream"],

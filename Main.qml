@@ -8,6 +8,7 @@ Item {
     property var pluginApi: null
     property bool running: false
     property string status: "stopped"
+    property bool pendingRestart: false
 
     readonly property bool enabled: pluginApi?.pluginSettings?.enabled ?? true
     readonly property int maxVisible: pluginApi?.pluginSettings?.maxVisible ?? 4
@@ -20,6 +21,7 @@ Item {
         if (enabled) {
             startDaemon();
         } else {
+            pendingRestart = false;
             stopDaemon();
         }
     }
@@ -37,6 +39,7 @@ Item {
     }
 
     Component.onDestruction: {
+        pendingRestart = false;
         stopDaemon();
     }
 
@@ -51,8 +54,8 @@ Item {
     }
 
     function restartDaemon() {
+        pendingRestart = true;
         stopDaemon();
-        Qt.callLater(startDaemon);
     }
 
     function setMaxVisible(count) {
@@ -80,15 +83,21 @@ Item {
 
         onExited: (exitCode, exitStatus) => {
             root.running = false;
+
+            if (root.pendingRestart) {
+                root.pendingRestart = false;
+                root.status = "starting";
+                root.startDaemon();
+                return;
+            }
+
             if (exitCode === 0 || exitStatus === Process.CrashExit) {
                 root.status = "stopped";
             } else {
                 root.status = "error";
-            }
-
-            // Auto-restart if enabled and not intentionally stopped
-            if (root.enabled && exitCode !== 0) {
-                restartTimer.start();
+                if (root.enabled) {
+                    restartTimer.start();
+                }
             }
         }
 
