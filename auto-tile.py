@@ -4,16 +4,7 @@
 Listens to niri's JSON event stream and automatically resizes all tiling
 columns to equal widths whenever a window is opened or closed.
 
-Fixes applied from multi-perspective security/quality review:
-- JSON event parsing instead of fragile substring matching
-- Per-workspace state tracking (not global)
-- Thread-safe lock on shared state
-- Structured logging with levels
-- Rate limiting / circuit breaker for event floods
-- Reconnection loop if event stream dies
-- SIGTERM handler for graceful shutdown
-- Input validation on IPC responses
-- Column count cap for safety
+Supports per-workspace max-visible settings via --workspace-config.
 """
 
 import argparse
@@ -31,6 +22,9 @@ DEBOUNCE_SECONDS = 0.3
 NIRI_TIMEOUT = 5
 RECONNECT_DELAY = 2.0
 MAX_EVENTS_PER_SECOND = 20
+PER_WORKSPACE = False
+WORKSPACE_MAX_VISIBLE: dict[int, int] = {}
+ONLY_AT_MAX = True
 
 # ─── Logging ───
 logging.basicConfig(
@@ -57,6 +51,13 @@ def _valid_id(value) -> int | None:
         return val if val >= 0 else None
     except (TypeError, ValueError):
         return None
+
+
+def get_max_visible(ws_id: int) -> int:
+    """Get max visible columns for a workspace."""
+    if PER_WORKSPACE and ws_id in WORKSPACE_MAX_VISIBLE:
+        return WORKSPACE_MAX_VISIBLE[ws_id]
+    return MAX_VISIBLE
 
 
 # ─── Niri IPC ───
@@ -166,7 +167,11 @@ def get_active_workspaces() -> set[int]:
 
 
 def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
-    """Redistribute columns on a single workspace."""
+    """Redistribute columns on a single workspace.
+
+    Only redistributes when col_count >= max_visible. Below that threshold,
+    niri's default layout is preserved.
+    """
     col_count = count_columns(ws_id)
     if col_count == 0:
         return
@@ -176,16 +181,25 @@ def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
         log.warning("col_count=%d exceeds max=%d, capping", col_count, MAX_COLUMNS)
         col_count = MAX_COLUMNS
 
-    # Thread-safe check: skip if column count unchanged for this workspace
-    with _lock:
-        if col_count == _prev_col_counts.get(ws_id):
-            return
-        _prev_col_counts[ws_id] = col_count
+    max_vis = get_max_visible(ws_id)
 
-    visible = min(col_count, MAX_VISIBLE)
+    # Thread-safe check: skip if state unchanged for this workspace
+    cache_key = (col_count, max_vis)
+    with _lock:
+        if _prev_col_counts.get(ws_id) == cache_key:
+            return
+        _prev_col_counts[ws_id] = cache_key
+
+    # Below max_visible: keep niri default layout if onlyAtMax is set
+    if ONLY_AT_MAX and col_count < max_vis:
+        log.info("ws=%d: %d cols < max=%d, keeping default layout", ws_id, col_count, max_vis)
+        return
+
+    # At or above max_visible: redistribute evenly and center
+    visible = min(col_count, max_vis)
     base_pct = 100 // visible
     remainder = 100 - (base_pct * visible)
-    log.info("ws=%d: %d cols -> %d%% each (+%d%% last)", ws_id, col_count, base_pct, remainder)
+    log.info("ws=%d: %d cols, max=%d -> %d%% each (+%d%% last)", ws_id, col_count, max_vis, base_pct, remainder)
 
     # Focus a window on this workspace first
     windows = _get_windows()
@@ -207,7 +221,7 @@ def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
         if i < col_count - 1:
             niri_action("focus-column-right")
 
-    # Force viewport recalculation
+    # Center all visible columns on screen
     niri_action("focus-column-first")
     niri_action("center-visible-columns")
 
@@ -370,6 +384,18 @@ def parse_args() -> argparse.Namespace:
         help=f"max events per second (default: {MAX_EVENTS_PER_SECOND})",
     )
     parser.add_argument(
+        "--only-at-max", action="store_true",
+        help="only redistribute when column count reaches max-visible",
+    )
+    parser.add_argument(
+        "--per-workspace", action="store_true",
+        help="use per-workspace max-visible settings",
+    )
+    parser.add_argument(
+        "--workspace-config", type=str, default=None,
+        help='JSON map of workspace_id -> maxVisible, e.g. \'{"3":2,"1":4}\'',
+    )
+    parser.add_argument(
         "--debug", action="store_true",
         help="enable debug logging",
     )
@@ -380,6 +406,7 @@ def parse_args() -> argparse.Namespace:
 def main() -> None:
     """Main entry point with reconnection loop."""
     global MAX_VISIBLE, DEBOUNCE_SECONDS, MAX_EVENTS_PER_SECOND
+    global PER_WORKSPACE, WORKSPACE_MAX_VISIBLE, ONLY_AT_MAX
 
     args = parse_args()
 
@@ -390,6 +417,21 @@ def main() -> None:
         DEBOUNCE_SECONDS = max(0.05, args.debounce)
     if args.max_events is not None:
         MAX_EVENTS_PER_SECOND = max(1, args.max_events)
+    if args.only_at_max:
+        ONLY_AT_MAX = True
+    if args.per_workspace:
+        PER_WORKSPACE = True
+    if args.workspace_config:
+        try:
+            raw = json.loads(args.workspace_config)
+            if isinstance(raw, dict):
+                WORKSPACE_MAX_VISIBLE = {
+                    int(k): max(1, int(v))
+                    for k, v in raw.items()
+                    if str(k).isdigit() and str(v).isdigit()
+                }
+        except (json.JSONDecodeError, ValueError) as exc:
+            log.warning("invalid --workspace-config: %s", exc)
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
@@ -402,7 +444,10 @@ def main() -> None:
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, _shutdown)
 
-    log.info("starting (max_visible=%d, debounce=%gms)", MAX_VISIBLE, DEBOUNCE_SECONDS * 1000)
+    mode = "per-workspace" if PER_WORKSPACE else "global"
+    ws_cfg = f", ws_config={WORKSPACE_MAX_VISIBLE}" if WORKSPACE_MAX_VISIBLE else ""
+    log.info("starting (max_visible=%d, mode=%s, debounce=%gms%s)",
+             MAX_VISIBLE, mode, DEBOUNCE_SECONDS * 1000, ws_cfg)
 
     while True:
         try:

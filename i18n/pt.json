@@ -3,6 +3,8 @@
     "title": "Layout de Colunas",
     "single": "Única",
     "columns": "%1 Colunas",
+    "per-workspace": "Por workspace",
+    "only-at-max": "Só no máximo",
     "status-active": "Ativo — %1 colunas",
     "status-starting": "Iniciando...",
     "status-disabled": "Desativado"
@@ -20,6 +22,8 @@
     "enabled-desc": "Redistribuir automaticamente as larguras das colunas ao abrir ou fechar janelas",
     "max-visible": "Colunas visíveis",
     "max-visible-desc": "Número máximo de colunas visíveis na tela simultaneamente",
+    "per-workspace": "Por workspace",
+    "per-workspace-desc": "Cada workspace tem sua própria configuração de colunas",
     "debounce": "Atraso de debounce",
     "debounce-desc": "Atraso antes da redistribuição para agrupar eventos rápidos",
     "rate-limit": "Limite de eventos",
