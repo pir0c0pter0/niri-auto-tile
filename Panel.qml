@@ -47,7 +47,7 @@ Item {
                         spacing: Style.marginS
 
                         NIcon {
-                            icon: "view-split-left-right"
+                            icon: "barrier-block"
                             pointSize: Style.fontSizeL
                             color: Color.mPrimary
                         }
@@ -143,7 +143,7 @@ Item {
                                             ? (pluginApi?.tr("panel.single") ?? "Single")
                                             : (pluginApi?.tr("panel.columns") ?? "%1 Columns").arg(layoutOption.columnCount)
                                         pointSize: Style.fontSizeS
-                                        font.weight: layoutOption.isSelected ? Style.fontWeightBold : Style.fontWeightNormal
+                                        font.bold: layoutOption.isSelected
                                         color: layoutOption.isSelected ? Color.mPrimary : Color.mOnSurface
                                     }
                                 }
