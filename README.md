@@ -70,6 +70,8 @@ If you use [noctalia-shell](https://github.com/noctalia-dev/noctalia-shell), thi
      ~/.config/noctalia/plugins/niri-auto-tile
    ```
 
+   > **Warning:** Do not clone into `/tmp` and symlink — `/tmp` is cleared on reboot, breaking the plugin. Always use a persistent path.
+
 2. **Enable** in Noctalia Settings > Plugins > niri-auto-tile
 
 3. **Add the bar widget** — drag "Auto-Tile" to your bar in Noctalia Settings > Bar
@@ -294,8 +296,14 @@ This script has been through two rounds of multi-perspective security review (5 
 If the Quickshell logs show `Plugin niri-auto-tile is enabled but not found on disk`, the plugin files were missing when Noctalia started. Common causes:
 
 1. **Plugin was installed after niri started** — Noctalia only scans for plugins at startup. Restart `qs` after installing.
-2. **Duplicate qs instances** — check if you have multiple `spawn-at-startup` / `spawn-sh-at-startup` entries for `qs -c noctalia-shell` across your niri config files (e.g., `config.kdl` + an included `autostart.kdl`). Keep only one.
-3. **sourceUrl is "local"** — when installed via `git clone`, the plugin's `sourceUrl` in `~/.config/noctalia/plugins.json` is set to `"local"`. This means Noctalia cannot auto-download the plugin if files are missing — you must re-clone manually.
+2. **Symlink pointing to `/tmp`** — if you cloned into `/tmp/niri-auto-tile` and symlinked from the plugins directory, the symlink breaks on reboot because `/tmp` is cleared on every boot. Fix by re-cloning to a persistent path (e.g., `~/.config/noctalia/plugins/niri-auto-tile` or `~/projects/niri-auto-tile`) and updating the symlink:
+   ```bash
+   rm ~/.config/noctalia/plugins/niri-auto-tile
+   git clone https://github.com/pir0c0pter0/niri-auto-tile.git \
+     ~/.config/noctalia/plugins/niri-auto-tile
+   ```
+3. **Duplicate qs instances** — check if you have multiple `spawn-at-startup` / `spawn-sh-at-startup` entries for `qs -c noctalia-shell` across your niri config files (e.g., `config.kdl` + an included `autostart.kdl`). Keep only one.
+4. **sourceUrl is "local"** — when installed via `git clone`, the plugin's `sourceUrl` in `~/.config/noctalia/plugins.json` is set to `"local"`. This means Noctalia cannot auto-download the plugin if files are missing — you must re-clone manually.
 
 **How to check Quickshell logs:**
 
@@ -307,9 +315,9 @@ ls /run/user/1000/quickshell/by-id/
 grep -i "auto-tile\|plugin" /run/user/1000/quickshell/by-id/*/log.log
 ```
 
-### Bar widget not visible
+### Bar widget not visible or disappeared after reboot
 
-The plugin daemon runs independently of the bar widget. If the daemon is running (`pgrep -f auto-tile.py`) but you don't see the icon:
+The plugin daemon runs independently of the bar widget. If the plugin failed to load on a previous boot (e.g., broken symlink), Noctalia automatically removes `plugin:niri-auto-tile` from the bar configuration. Even after fixing the underlying issue, you must re-add the widget:
 
 1. Open **Noctalia Settings > Bar**
 2. Drag "Auto-Tile" (`plugin:niri-auto-tile`) to your bar
