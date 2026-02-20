@@ -13,7 +13,6 @@ ColumnLayout {
 
     property bool valueEnabled: settings.enabled ?? defaults.enabled ?? true
     property bool valuePerWorkspace: settings.perWorkspace ?? defaults.perWorkspace ?? false
-    property bool valueOnlyAtMax: settings.onlyAtMax ?? defaults.onlyAtMax ?? true
     property int valueMaxVisible: settings.maxVisible ?? defaults.maxVisible ?? 4
     property int valueDebounceMs: settings.debounceMs ?? defaults.debounceMs ?? 300
     property int valueMaxEventsPerSecond: settings.maxEventsPerSecond ?? defaults.maxEventsPerSecond ?? 20
@@ -24,7 +23,6 @@ ColumnLayout {
         if (!pluginApi) return;
         pluginApi.pluginSettings.enabled = root.valueEnabled;
         pluginApi.pluginSettings.perWorkspace = root.valuePerWorkspace;
-        pluginApi.pluginSettings.onlyAtMax = root.valueOnlyAtMax;
         pluginApi.pluginSettings.maxVisible = root.valueMaxVisible;
         pluginApi.pluginSettings.debounceMs = root.valueDebounceMs;
         pluginApi.pluginSettings.maxEventsPerSecond = root.valueMaxEventsPerSecond;
@@ -51,19 +49,6 @@ ColumnLayout {
         checked: root.valuePerWorkspace
         onToggled: checked => {
             root.valuePerWorkspace = checked;
-            root.saveSettings();
-            pluginApi?.mainInstance?.restartDaemon();
-        }
-    }
-
-    // ─── Only at Max ───
-    NToggle {
-        Layout.fillWidth: true
-        label: pluginApi?.tr("settings.only-at-max") ?? "Only at max"
-        description: pluginApi?.tr("settings.only-at-max-desc") ?? "Only redistribute when column count reaches the maximum"
-        checked: root.valueOnlyAtMax
-        onToggled: checked => {
-            root.valueOnlyAtMax = checked;
             root.saveSettings();
             pluginApi?.mainInstance?.restartDaemon();
         }

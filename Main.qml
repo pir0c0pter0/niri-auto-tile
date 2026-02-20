@@ -13,7 +13,6 @@ Item {
     readonly property bool enabled: pluginApi?.pluginSettings?.enabled ?? true
     readonly property int maxVisible: pluginApi?.pluginSettings?.maxVisible ?? 4
     readonly property bool perWorkspace: pluginApi?.pluginSettings?.perWorkspace ?? false
-    readonly property bool onlyAtMax: pluginApi?.pluginSettings?.onlyAtMax ?? true
     readonly property var workspaceMaxVisible: pluginApi?.pluginSettings?.workspaceMaxVisible ?? ({})
     readonly property int debounceMs: pluginApi?.pluginSettings?.debounceMs ?? 300
     readonly property int maxEventsPerSecond: pluginApi?.pluginSettings?.maxEventsPerSecond ?? 20
@@ -41,10 +40,6 @@ Item {
     }
 
     onPerWorkspaceChanged: {
-        if (running) restartDaemon();
-    }
-
-    onOnlyAtMaxChanged: {
         if (running) restartDaemon();
     }
 
@@ -98,12 +93,6 @@ Item {
         pluginApi.saveSettings();
     }
 
-    function setOnlyAtMax(value) {
-        if (!pluginApi?.pluginSettings) return;
-        pluginApi.pluginSettings.onlyAtMax = value;
-        pluginApi.saveSettings();
-    }
-
     function getMaxVisibleForWorkspace(wsId) {
         if (perWorkspace) {
             const cfg = workspaceMaxVisible;
@@ -122,9 +111,6 @@ Item {
                 "--debounce", String(root.debounceMs / 1000.0),
                 "--max-events", String(root.maxEventsPerSecond)
             ];
-            if (root.onlyAtMax) {
-                args.push("--only-at-max");
-            }
             if (root.perWorkspace) {
                 args.push("--per-workspace");
                 args.push("--workspace-config");

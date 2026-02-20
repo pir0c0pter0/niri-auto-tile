@@ -27,7 +27,6 @@
       "debounceMs": 300,
       "maxEventsPerSecond": 20,
       "enabled": true,
-      "onlyAtMax": true,
       "perWorkspace": false,
       "workspaceMaxVisible": {}
     }

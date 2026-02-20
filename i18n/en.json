@@ -20,8 +20,6 @@
     "enabled-desc": "Automatically redistribute column widths when windows open or close",
     "per-workspace": "Per workspace",
     "per-workspace-desc": "Each workspace has its own column count setting",
-    "only-at-max": "Only at max",
-    "only-at-max-desc": "Only redistribute when column count reaches the maximum",
     "max-visible": "Max visible columns",
     "max-visible-desc": "Maximum number of columns visible on screen at once",
     "debounce": "Debounce delay",
