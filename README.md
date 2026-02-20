@@ -151,7 +151,6 @@ python3 auto-tile.py \
   --max-visible 4 \
   --debounce 0.3 \
   --max-events 20 \
-  --only-at-max \
   --per-workspace \
   --workspace-config '{"3":2,"1":4}' \
   --debug
@@ -168,7 +167,6 @@ python3 auto-tile.py \
 | `RECONNECT_DELAY` | `2.0` | Delay before reconnecting after event stream drops |
 | `MAX_EVENTS_PER_SECOND` | `20` | Rate limiter threshold |
 | `PER_WORKSPACE` | `False` | Per-workspace column count settings |
-| `ONLY_AT_MAX` | `True` | Only redistribute at or above max visible |
 
 ### Recommended niri layout
 
