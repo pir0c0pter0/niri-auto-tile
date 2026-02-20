@@ -74,6 +74,17 @@ If you use [noctalia-shell](https://github.com/noctalia-dev/noctalia-shell), thi
 
 3. **Add the bar widget** — drag "Auto-Tile" to your bar in Noctalia Settings > Bar
 
+4. **Restart Noctalia** — the plugin only loads on shell startup, so you need to restart `qs` after installing:
+
+   ```bash
+   # Find and kill the running qs instance
+   pkill -f "qs -c noctalia-shell"
+   # niri will respawn it on next login, or start it manually:
+   qs -c noctalia-shell &
+   ```
+
+> **Important:** Make sure you only have **one** `spawn-at-startup` or `spawn-sh-at-startup` entry for `qs -c noctalia-shell` in your niri config. Having duplicates (e.g., one in `config.kdl` and another in an included file like `autostart.kdl`) will spawn multiple shell instances and cause conflicts.
+
 ### Systemd User Service (optional)
 
 For process supervision with automatic restart:
@@ -277,6 +288,32 @@ This script has been through two rounds of multi-perspective security review (5 
 ---
 
 ## Troubleshooting
+
+### Plugin not loading on boot (Noctalia)
+
+If the Quickshell logs show `Plugin niri-auto-tile is enabled but not found on disk`, the plugin files were missing when Noctalia started. Common causes:
+
+1. **Plugin was installed after niri started** — Noctalia only scans for plugins at startup. Restart `qs` after installing.
+2. **Duplicate qs instances** — check if you have multiple `spawn-at-startup` / `spawn-sh-at-startup` entries for `qs -c noctalia-shell` across your niri config files (e.g., `config.kdl` + an included `autostart.kdl`). Keep only one.
+3. **sourceUrl is "local"** — when installed via `git clone`, the plugin's `sourceUrl` in `~/.config/noctalia/plugins.json` is set to `"local"`. This means Noctalia cannot auto-download the plugin if files are missing — you must re-clone manually.
+
+**How to check Quickshell logs:**
+
+```bash
+# Find the active qs log directory
+ls /run/user/1000/quickshell/by-id/
+
+# Search for plugin-related messages
+grep -i "auto-tile\|plugin" /run/user/1000/quickshell/by-id/*/log.log
+```
+
+### Bar widget not visible
+
+The plugin daemon runs independently of the bar widget. If the daemon is running (`pgrep -f auto-tile.py`) but you don't see the icon:
+
+1. Open **Noctalia Settings > Bar**
+2. Drag "Auto-Tile" (`plugin:niri-auto-tile`) to your bar
+3. Restart `qs` if needed
 
 ### Windows don't redistribute
 
