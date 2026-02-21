@@ -21,6 +21,20 @@ Item {
     readonly property bool perWorkspace: mainInstance?.perWorkspace ?? false
     readonly property int globalMaxVisible: mainInstance?.maxVisible ?? 4
 
+    property int _langVersion: 0
+
+    Connections {
+        target: pluginApi?.mainInstance ?? null
+        function onTranslationVersionChanged() {
+            root._langVersion++;
+        }
+    }
+
+    function t(key) {
+        if (_langVersion < 0) return undefined;
+        return pluginApi?.mainInstance?.translate(key);
+    }
+
     // Current workspace detection
     property int currentWorkspaceId: -1
     property int currentMaxVisible: {
@@ -97,7 +111,7 @@ Item {
                         }
 
                         NText {
-                            text: pluginApi?.tr("panel.title") ?? "Column Layout"
+                            text: root.t("panel.title") ?? "Column Layout"
                             pointSize: Style.fontSizeL
                             font.bold: true
                             color: Color.mOnSurface
@@ -183,8 +197,8 @@ Item {
                                     NText {
                                         Layout.alignment: Qt.AlignHCenter
                                         text: layoutOption.columnCount === 1
-                                            ? (pluginApi?.tr("panel.single") ?? "Single")
-                                            : (pluginApi?.tr("panel.columns") ?? "%1 Columns").arg(layoutOption.columnCount)
+                                            ? (root.t("panel.single") ?? "Single")
+                                            : (root.t("panel.columns") ?? "%1 Columns").arg(layoutOption.columnCount)
                                         pointSize: Style.fontSizeS
                                         font.bold: layoutOption.isSelected
                                         color: layoutOption.isSelected ? Color.mPrimary : Color.mOnSurface
@@ -223,15 +237,15 @@ Item {
 
                         NText {
                             text: {
-                                if (!root.isEnabled) return pluginApi?.tr("panel.status-disabled") ?? "Disabled";
+                                if (!root.isEnabled) return root.t("panel.status-disabled") ?? "Disabled";
                                 if (root.isRunning) {
-                                    const label = (pluginApi?.tr("panel.status-active") ?? "Active — %1 columns").arg(root.currentMaxVisible);
+                                    const label = (root.t("panel.status-active") ?? "Active — %1 columns").arg(root.currentMaxVisible);
                                     if (root.perWorkspace && root.currentWorkspaceId > 0) {
                                         return label + " (WS " + root.currentWorkspaceId + ")";
                                     }
                                     return label;
                                 }
-                                return pluginApi?.tr("panel.status-starting") ?? "Starting...";
+                                return root.t("panel.status-starting") ?? "Starting...";
                             }
                             pointSize: Style.fontSizeS
                             color: Qt.alpha(Color.mOnSurface, 0.6)

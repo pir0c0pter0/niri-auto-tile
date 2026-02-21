@@ -37,7 +37,7 @@ Key detail: `WindowOpenedOrChanged` events are filtered by tracking `_known_wind
 
 | File | Role |
 |------|------|
-| `Main.qml` | Daemon lifecycle (start/stop/restart), IPC handler, settings bridge |
+| `Main.qml` | Daemon lifecycle (start/stop/restart), IPC handler, settings bridge, self-contained i18n |
 | `BarWidget.qml` | Bar indicator with column count visualization and status dot |
 | `Panel.qml` | Floating panel with visual 1-4 column grid selector |
 | `Settings.qml` | Full settings page (toggles, sliders, status indicator) |
@@ -56,7 +56,13 @@ Shared mutable state (`_known_window_ids`, `_prev_col_counts`, `_debounce_timer`
 
 ## i18n
 
-Translations live in `i18n/en.json` and `i18n/pt.json`. Keys are namespaced: `panel.*`, `bar.*`, `settings.*`. Accessed in QML via `pluginApi?.tr("key")` with `??` fallback to English hardcoded strings.
+The plugin uses a **self-contained translation system** embedded in `Main.qml`. All EN and PT strings are defined as inline objects (`_enStrings`, `_ptStrings`) and resolved via `translate(key)`. This avoids dependency on the framework's `pluginApi.tr()`.
+
+- **Language selection**: Configurable in Settings (Auto / English / Portuguese). The `auto` option detects the system locale via `Qt.locale().name`.
+- **Live switching**: Changing language triggers `reloadLanguage()` which updates `_translations` and increments `translationVersion`. All QML components listen for `onTranslationVersionChanged` via `Connections` and re-render.
+- **Access pattern**: Each QML component defines a local `t(key)` helper that calls `pluginApi.mainInstance.translate(key)`. Fallback uses `??` to English hardcoded strings.
+- **Key namespacing**: `panel.*`, `bar.*`, `settings.*`.
+- **Reference files**: `i18n/en.json` and `i18n/pt.json` serve as translation key reference but are **not loaded at runtime** — the strings are embedded in `Main.qml`.
 
 ## Requirements
 

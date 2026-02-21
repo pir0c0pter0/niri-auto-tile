@@ -31,6 +31,11 @@
     "status-stopped": "Daemon parado",
     "about-title": "Sobre",
     "about-credit": "Desenvolvido por Pir0c0pter0 usando Claude",
-    "about-date": "Data"
+    "about-date": "Data",
+    "language": "Idioma",
+    "language-desc": "Idioma de exibicao do plugin",
+    "lang-auto": "Auto",
+    "lang-en": "Ingles",
+    "lang-pt": "Portugues"
   }
 }

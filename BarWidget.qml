@@ -28,6 +28,20 @@ Item {
     readonly property real barHeight: Style.getBarHeightForScreen(screenName)
     readonly property real capsuleHeight: Style.getCapsuleHeightForScreen(screenName)
 
+    property int _langVersion: 0
+
+    Connections {
+        target: pluginApi?.mainInstance ?? null
+        function onTranslationVersionChanged() {
+            root._langVersion++;
+        }
+    }
+
+    function t(key) {
+        if (_langVersion < 0) return undefined;
+        return pluginApi?.mainInstance?.translate(key);
+    }
+
     readonly property real contentWidth: {
         if (isVertical) return root.capsuleHeight;
         return columnIndicator.implicitWidth + Style.marginM * 2;
@@ -86,13 +100,13 @@ Item {
             var items = [];
             items.push({
                 "label": isEnabled
-                    ? (pluginApi?.tr("bar.disable") ?? "Disable Auto-Tile")
-                    : (pluginApi?.tr("bar.enable") ?? "Enable Auto-Tile"),
+                    ? (root.t("bar.disable") ?? "Disable Auto-Tile")
+                    : (root.t("bar.enable") ?? "Enable Auto-Tile"),
                 "action": "toggle",
                 "icon": isEnabled ? "player-pause" : "player-play"
             });
             items.push({
-                "label": pluginApi?.tr("bar.settings") ?? "Settings",
+                "label": root.t("bar.settings") ?? "Settings",
                 "action": "widget-settings",
                 "icon": "flask"
             });

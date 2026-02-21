@@ -28,7 +28,8 @@
       "maxEventsPerSecond": 20,
       "enabled": true,
       "perWorkspace": false,
-      "workspaceMaxVisible": {}
+      "workspaceMaxVisible": {},
+      "language": "auto"
     }
   }
 }
