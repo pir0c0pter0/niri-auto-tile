@@ -2,7 +2,7 @@
 
 A KWin Script for **KDE Plasma 6** that automatically arranges windows in equal-width columns. When you open or close a window, all visible windows are instantly redistributed into a clean column layout.
 
-> Ported from [niri-auto-tile](https://github.com/pir0c0pter0/auto-tile), originally built for the niri Wayland compositor.
+> Ported from [niri-auto-tile](https://github.com/pir0c0pter0/niri-auto-tile), originally built for the niri Wayland compositor. Standalone repo: [kwin-auto-tile](https://github.com/pir0c0pter0/kwin-auto-tile).
 
 ---
 
