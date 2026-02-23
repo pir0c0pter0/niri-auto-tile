@@ -24,6 +24,8 @@ RECONNECT_DELAY = 2.0
 MAX_EVENTS_PER_SECOND = 20
 PER_WORKSPACE = False
 WORKSPACE_MAX_VISIBLE: dict[int, int] = {}
+ONLY_PRIMARY_OUTPUT = True
+PRIMARY_OUTPUT: str | None = None
 
 # ─── Logging ───
 logging.basicConfig(
@@ -34,12 +36,13 @@ logging.basicConfig(
 log = logging.getLogger("auto-tile")
 
 # ─── State ───
-_prev_col_counts: dict[int, int] = {}  # workspace_id -> column count
+_prev_col_counts: dict[int, tuple[int, int]] = {}  # workspace_id -> (column count, max_visible)
 _known_window_ids: set[int] = set()    # track known windows to detect new ones
 _debounce_timer: threading.Timer | None = None
 _lock = threading.Lock()
 _event_count = 0
 _event_window_start = 0.0
+_resolved_primary_output: str | None = None
 
 
 # ─── Validation ───
@@ -153,6 +156,90 @@ def _get_windows() -> list[dict]:
         return []
 
 
+def _get_workspaces() -> list[dict]:
+    """Fetch workspaces metadata from niri IPC."""
+    raw = niri_cmd("-j", "workspaces")
+    if not raw:
+        return []
+    try:
+        workspaces = json.loads(raw)
+        if not isinstance(workspaces, list):
+            return []
+        return [ws for ws in workspaces if isinstance(ws, dict)]
+    except json.JSONDecodeError:
+        log.warning("failed to parse workspaces JSON")
+        return []
+
+
+def _get_outputs() -> dict[str, dict]:
+    """Fetch outputs metadata from niri IPC."""
+    raw = niri_cmd("-j", "outputs")
+    if not raw:
+        return {}
+    try:
+        outputs = json.loads(raw)
+        if not isinstance(outputs, dict):
+            return {}
+        clean: dict[str, dict] = {}
+        for out_name, out_meta in outputs.items():
+            if isinstance(out_name, str) and isinstance(out_meta, dict):
+                clean[out_name] = out_meta
+        return clean
+    except json.JSONDecodeError:
+        log.warning("failed to parse outputs JSON")
+        return {}
+
+
+def _detect_primary_output() -> str | None:
+    """Detect the primary output.
+
+    niri IPC does not expose an explicit "is_primary" flag, so we use:
+    1) Largest logical area output (common primary-monitor setup)
+    2) Focused output as fallback
+    """
+    outputs = _get_outputs()
+    largest_name: str | None = None
+    largest_area = -1.0
+
+    for out_name, out_meta in outputs.items():
+        logical = out_meta.get("logical")
+        if not isinstance(logical, dict):
+            continue
+        width = logical.get("width")
+        height = logical.get("height")
+        if isinstance(width, (int, float)) and isinstance(height, (int, float)):
+            area = float(width) * float(height)
+            if area > largest_area:
+                largest_area = area
+                largest_name = out_name
+
+    if largest_name is not None:
+        return largest_name
+
+    raw = niri_cmd("-j", "focused-output")
+    if raw:
+        try:
+            focused = json.loads(raw)
+            if isinstance(focused, dict):
+                name = focused.get("name")
+                if isinstance(name, str) and name:
+                    return name
+        except json.JSONDecodeError:
+            log.warning("failed to parse focused-output JSON")
+    return None
+
+
+def _get_workspace_output_map() -> dict[int, str]:
+    """Map workspace_id -> output name."""
+    mapping: dict[int, str] = {}
+    for ws in _get_workspaces():
+        ws_id = _valid_id(ws.get("id"))
+        output = ws.get("output")
+        if ws_id is not None and isinstance(output, str) and output:
+            mapping[ws_id] = output
+    return mapping
+
+
 def count_columns(workspace_id: int) -> int:
     """Count unique tiling columns in the given workspace."""
     cols: set[int] = set()
@@ -190,7 +277,41 @@ def get_active_workspaces() -> set[int]:
     return ws_ids
 
 
-def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
+def _resolve_primary_output() -> str | None:
+    """Resolve which output should be treated as primary."""
+    global _resolved_primary_output
+
+    if PRIMARY_OUTPUT:
+        return PRIMARY_OUTPUT
+
+    with _lock:
+        if _resolved_primary_output:
+            return _resolved_primary_output
+
+    detected = _detect_primary_output()
+    if detected:
+        with _lock:
+            _resolved_primary_output = detected
+        log.info("primary output detected: %s", detected)
+    return detected
+
+
+def get_target_workspaces() -> set[int]:
+    """Get workspaces that should be affected by auto-tiling."""
+    active = get_active_workspaces()
+    if not ONLY_PRIMARY_OUTPUT:
+        return active
+
+    target_output = _resolve_primary_output()
+    if not target_output:
+        log.warning("primary output not detected; falling back to all active workspaces")
+        return active
+
+    ws_to_output = _get_workspace_output_map()
+    return {ws_id for ws_id in active if ws_to_output.get(ws_id) == target_output}
+
+
+def _redistribute_workspace(ws_id: int) -> None:
     """Redistribute columns on a single workspace.
 
     Always sizes columns to 100/max_visible percent, even when there are
@@ -245,11 +366,11 @@ def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
 
 
 def redistribute() -> None:
-    """Redistribute all active workspaces, restoring original focus afterwards."""
+    """Redistribute target workspaces, restoring original focus afterwards."""
     original_ws, original_focused = get_focused_workspace()
 
-    for active_ws in get_active_workspaces():
-        _redistribute_workspace(active_ws, None)
+    for active_ws in get_target_workspaces():
+        _redistribute_workspace(active_ws)
 
     # Restore focus to the original window/workspace
     if original_focused is not None:
@@ -415,6 +536,14 @@ def parse_args() -> argparse.Namespace:
         help='JSON map of workspace_id -> maxVisible, e.g. \'{"3":2,"1":4}\'',
     )
     parser.add_argument(
+        "--primary-output", type=str, default=None,
+        help="output name to treat as primary (e.g. DP-1)",
+    )
+    parser.add_argument(
+        "--all-workspaces", action="store_true",
+        help="redistribute all active workspaces across all outputs",
+    )
+    parser.add_argument(
         "--debug", action="store_true",
         help="enable debug logging",
     )
@@ -426,6 +555,7 @@ def main() -> None:
     """Main entry point with reconnection loop."""
     global MAX_VISIBLE, DEBOUNCE_SECONDS, MAX_EVENTS_PER_SECOND
     global PER_WORKSPACE, WORKSPACE_MAX_VISIBLE
+    global PRIMARY_OUTPUT, ONLY_PRIMARY_OUTPUT
 
     args = parse_args()
 
@@ -449,6 +579,11 @@ def main() -> None:
                 }
         except (json.JSONDecodeError, ValueError) as exc:
             log.warning("invalid --workspace-config: %s", exc)
+    if args.primary_output:
+        primary = args.primary_output.strip()
+        PRIMARY_OUTPUT = primary or None
+    if args.all_workspaces:
+        ONLY_PRIMARY_OUTPUT = False
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
@@ -462,9 +597,12 @@ def main() -> None:
     signal.signal(signal.SIGTERM, _shutdown)
 
     mode = "per-workspace" if PER_WORKSPACE else "global"
+    scope = "all-outputs" if not ONLY_PRIMARY_OUTPUT else (
+        f"primary={PRIMARY_OUTPUT}" if PRIMARY_OUTPUT else "primary=auto"
+    )
     ws_cfg = f", ws_config={WORKSPACE_MAX_VISIBLE}" if WORKSPACE_MAX_VISIBLE else ""
-    log.info("starting (max_visible=%d, mode=%s, debounce=%gms%s)",
-             MAX_VISIBLE, mode, DEBOUNCE_SECONDS * 1000, ws_cfg)
+    log.info("starting (max_visible=%d, mode=%s, scope=%s, debounce=%gms%s)",
+             MAX_VISIBLE, mode, scope, DEBOUNCE_SECONDS * 1000, ws_cfg)
 
     while True:
         try:
