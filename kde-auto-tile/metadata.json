@@ -1,0 +1,20 @@
+{
+    "KPlugin": {
+        "Id": "kwin-auto-tile",
+        "Name": "Auto Tile",
+        "Description": "Automatically distributes windows in equal-width columns",
+        "Icon": "view-grid",
+        "Authors": [
+            {
+                "Name": "mariostjr",
+                "Email": ""
+            }
+        ],
+        "License": "MIT",
+        "Version": "1.0.0",
+        "Website": "https://github.com/mariostjr/auto-tile"
+    },
+    "X-Plasma-API": "javascript",
+    "X-Plasma-MainScript": "code/main.js",
+    "KPackageStructure": "KWin/Script"
+}

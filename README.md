@@ -1,358 +1,127 @@
-# niri-auto-tile
+# Auto Tile
 
-**Auto-tiling daemon for [niri](https://github.com/YaLTeR/niri) compositor** — automatically redistributes column widths evenly when windows are opened or closed.
+Automatic window tiling for Linux desktops. Open a window, and all visible windows instantly redistribute into equal-width columns.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![niri](https://img.shields.io/badge/niri-v25.11+-green.svg)](https://github.com/YaLTeR/niri)
-[![Python](https://img.shields.io/badge/Python-3.10+-yellow.svg)](https://python.org)
-[![Noctalia Plugin](https://img.shields.io/badge/Noctalia-Plugin-purple.svg)](https://github.com/noctalia-dev/noctalia-plugins)
 
 ---
 
-## The Problem
+## Platforms
 
-Niri is a scrollable-tiling Wayland compositor where windows are arranged in columns on an infinite horizontal strip. When you open or close windows, existing columns don't automatically resize to fill the viewport — you're left with empty space or columns scrolled off-screen.
+This repository contains two independent implementations of the same idea, one for each compositor/desktop environment:
 
-## The Solution
+| | niri | KDE Plasma 6 |
+|---|---|---|
+| **Directory** | [`niri-auto-tile/`](niri-auto-tile/) | [`kde-auto-tile/`](kde-auto-tile/) |
+| **Type** | Python daemon + Noctalia Shell plugin | KWin Script (pure JavaScript) |
+| **Compositor** | [niri](https://github.com/YaLTeR/niri) (scrollable-tiling Wayland) | KWin 6.x (Wayland / X11) |
+| **Dependencies** | Python 3.10+, niri v25.11+ | KDE Plasma 6 (built-in) |
+| **Configuration** | CLI args / Noctalia Settings UI | System Settings > KWin Scripts |
+| **GUI** | Bar widget, floating panel, settings page | Settings dialog (config.ui) |
 
-`niri-auto-tile` listens to niri's JSON event stream and automatically resizes all tiling columns to equal widths whenever a window is opened or closed. If you have 4 columns and close one, the remaining 3 instantly expand to fill the screen.
+### How it looks
 
-### Features
+```
+┌──────────┬──────────┬──────────┬──────────┐
+│          │          │          │          │
+│  Window  │  Window  │  Window  │  Window  │
+│    1     │    2     │    3     │    4     │
+│          │          │          │          │
+└──────────┴──────────┴──────────┴──────────┘
+              maxVisible = 4
+```
 
-- **Automatic redistribution** — columns resize instantly on window open/close
-- **Multi-workspace support** — redistributes all active workspaces, restoring original focus afterwards
-- **Configurable max visible columns** — caps how many columns fit on screen (default: 4)
-- **Per-workspace settings** — each workspace can have its own column count
-- **Only at max mode** — only redistribute when column count reaches the configured maximum
-- **Smart event filtering** — only reacts to actual window open/close, ignores title changes (e.g., browser tab switches)
-- **Theme-aware UI** — all colors follow the active Noctalia theme (no hardcoded colors)
-- **Thread-safe debouncing** — coalesces rapid events to prevent flickering
-- **Rate limiting** — circuit breaker for event floods (20 events/second cap)
-- **Auto-reconnection** — recovers if the niri event stream drops
-- **Graceful shutdown** — handles SIGTERM cleanly
-- **JSON IPC** — uses niri's structured JSON protocol, not fragile text parsing
-- **Input validation** — validates all IPC responses and data types
-- **i18n** — English and Portuguese translations
+Open a 5th window → it takes the next column slot (or goes off-screen/scrolled depending on the compositor). Close a window → the remaining ones fill the gap instantly.
 
 ---
 
-## Installation
+## Quick Start
 
-### Standalone (any niri setup)
-
-1. **Copy the script:**
-
-   ```bash
-   cp auto-tile.py ~/.config/niri/auto-tile.py
-   chmod 700 ~/.config/niri/auto-tile.py
-   ```
-
-2. **Add to niri autostart** (`~/.config/niri/config.kdl`):
-
-   ```kdl
-   spawn-at-startup "python3" "/home/YOUR_USER/.config/niri/auto-tile.py"
-   ```
-
-3. **Restart niri** or run manually:
-
-   ```bash
-   python3 ~/.config/niri/auto-tile.py
-   ```
-
-### Noctalia Shell Plugin
-
-If you use [noctalia-shell](https://github.com/noctalia-dev/noctalia-shell), this project includes a native plugin with a bar indicator, floating panel, and settings UI:
-
-1. **Clone into the plugins directory:**
-
-   ```bash
-   git clone https://github.com/pir0c0pter0/niri-auto-tile.git \
-     ~/.config/noctalia/plugins/niri-auto-tile
-   ```
-
-   > **Warning:** Do not clone into `/tmp` and symlink — `/tmp` is cleared on reboot, breaking the plugin. Always use a persistent path.
-
-2. **Enable** in Noctalia Settings > Plugins > niri-auto-tile
-
-3. **Add the bar widget** — drag "Auto-Tile" to your bar in Noctalia Settings > Bar
-
-4. **Restart Noctalia** — the plugin only loads on shell startup, so you need to restart `qs` after installing:
-
-   ```bash
-   # Find and kill the running qs instance
-   pkill -f "qs -c noctalia-shell"
-   # niri will respawn it on next login, or start it manually:
-   qs -c noctalia-shell &
-   ```
-
-> **Important:** Make sure you only have **one** `spawn-at-startup` or `spawn-sh-at-startup` entry for `qs -c noctalia-shell` in your niri config. Having duplicates (e.g., one in `config.kdl` and another in an included file like `autostart.kdl`) will spawn multiple shell instances and cause conflicts.
-
-### Systemd User Service (optional)
-
-For process supervision with automatic restart:
+### niri
 
 ```bash
-mkdir -p ~/.config/systemd/user
+# Standalone
+cp niri-auto-tile/auto-tile.py ~/.config/niri/auto-tile.py
+python3 ~/.config/niri/auto-tile.py --max-visible 4
 
-cat > ~/.config/systemd/user/niri-auto-tile.service << 'EOF'
-[Unit]
-Description=niri auto-tile daemon
-After=graphical-session.target
-
-[Service]
-ExecStart=/usr/bin/python3 %h/.config/niri/auto-tile.py
-Restart=on-failure
-RestartSec=2
-Environment=PYTHONUNBUFFERED=1
-
-[Install]
-WantedBy=graphical-session.target
-EOF
-
-systemctl --user enable --now niri-auto-tile.service
+# Or as Noctalia Shell plugin
+git clone https://github.com/pir0c0pter0/auto-tile.git \
+  ~/.config/noctalia/plugins/niri-auto-tile
 ```
 
----
+See [`niri-auto-tile/`](niri-auto-tile/) for full docs, Noctalia plugin UI screenshots, systemd service setup, and per-workspace configuration.
 
-## Noctalia Plugin UI
-
-### Bar Widget
-
-- Column indicators showing the current max visible count
-- Status dot (theme primary = running, theme secondary = starting)
-- Left-click opens the floating panel
-- Right-click context menu: enable/disable, settings
-
-### Floating Panel
-
-- Enable/disable toggle in the header
-- Visual column layout selector (1-4 columns grid)
-- Status bar with current state and workspace info
-
-### Settings
-
-- **Enable Auto-Tile** — master on/off switch
-- **Per workspace** — each workspace has its own column count
-- **Only at max** — only redistribute when columns reach the maximum
-- **Max visible columns** — slider from 1 to 8
-- **Debounce delay** — 100-1000ms event coalescence
-- **Rate limit** — 5-50 events per second
-- **Daemon status** — running/error/stopped indicator
-- **About** — credits and version info
-
----
-
-## Configuration
-
-### CLI Arguments
+### KDE Plasma 6
 
 ```bash
-python3 auto-tile.py \
-  --max-visible 4 \
-  --debounce 0.3 \
-  --max-events 20 \
-  --per-workspace \
-  --workspace-config '{"3":2,"1":4}' \
-  --debug
+# Install
+cd kde-auto-tile
+kpackagetool6 --type=KWin/Script -i .
+kwriteconfig6 --file kwinrc --group Plugins --key kwin-auto-tileEnabled true
+qdbus6 org.kde.KWin /KWin reconfigure
 ```
 
-### Configuration Variables
+Or install via **System Settings** > **Window Management** > **KWin Scripts** > **Install from File**.
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `MAX_VISIBLE` | `4` | Maximum columns visible on screen at once |
-| `MAX_COLUMNS` | `20` | Safety cap for total column count |
-| `DEBOUNCE_SECONDS` | `0.3` | Delay before redistribution (coalesces rapid events) |
-| `NIRI_TIMEOUT` | `5` | Timeout for niri IPC calls (seconds) |
-| `RECONNECT_DELAY` | `2.0` | Delay before reconnecting after event stream drops |
-| `MAX_EVENTS_PER_SECOND` | `20` | Rate limiter threshold |
-| `PER_WORKSPACE` | `False` | Per-workspace column count settings |
-
-### Recommended niri layout
-
-For best results, set your default column width to match `MAX_VISIBLE`:
-
-```kdl
-// ~/.config/niri/config.kdl
-layout {
-    default-column-width { proportion 0.25; }  // 1/4 for MAX_VISIBLE=4
-    preset-column-widths {
-        proportion 0.25
-        proportion 0.33333
-        proportion 0.5
-        proportion 0.66667
-    }
-}
-```
+See [`kde-auto-tile/`](kde-auto-tile/) for full docs, keyboard shortcuts, context menu, and troubleshooting.
 
 ---
 
-## How It Works
+## Shared Features
 
-```
-niri event-stream (JSON)
-         |
-         v
-   Event Filter          — only WindowOpened / WindowClosed (not title changes)
-         |
-         v
-   Rate Limiter          — max 20 events/second sliding window
-         |
-         v
-   Debounce Timer        — 300ms coalescence
-         |
-         v
-   Save Original Focus   — remember current workspace and focused window
-         |
-         v
-   Redistribute All      — set-column-width for each column on every active workspace
-         |
-         v
-   Restore Focus         — return to original workspace and window
-```
+Both implementations share the same core behavior:
 
-### Multi-Workspace Redistribution
+- **Automatic redistribution** on window open/close/minimize/fullscreen
+- **Column width = screen / maxVisible** — consistent column sizes even with fewer windows
+- **Configurable column count** (1-8) with keyboard shortcuts
+- **Per-monitor tiling** — each output is independent
+- **Debounce + rate limiting** — no flickering during rapid events
+- **Zero external dependencies** — each uses only its platform's native APIs
+- **Window exclusion** — filter by class or exclude individual windows
 
-When a window event triggers redistribution:
+### Key Differences
 
-1. The daemon saves the currently focused workspace and window
-2. Iterates through all active workspaces with tiled windows
-3. For each workspace, focuses a window there, walks columns, and sets equal widths
-4. After all workspaces are processed, restores focus to the original window
-5. If no window was focused (e.g., panel was open), falls back to focusing any window on the original workspace via `niri msg -j workspaces`
-
-### Event Filtering
-
-The script maintains a set of known window IDs. When `WindowOpenedOrChanged` fires:
-- If the window ID is **new** -> trigger redistribution
-- If the window ID **already exists** -> it's just a title change, skip
-
-This prevents the flickering that would occur with apps like Firefox that fire `WindowOpenedOrChanged` on every tab switch or page load.
-
-### Width Calculation
-
-Columns are sized to fill exactly 100% of the viewport:
-
-| Columns | Width per column |
-|---------|-----------------|
-| 1 | 100% |
-| 2 | 50% |
-| 3 | 33% + 33% + 34% |
-| 4 | 25% |
-| 5+ | 25% each (scrolled) |
-
-The last column absorbs any rounding remainder to ensure widths sum to exactly 100%.
+| Behavior | niri | KDE |
+|----------|------|-----|
+| Overflow windows | Scrolled off-screen (native viewport) | Moved off-screen to the right |
+| Virtual desktops | Per-workspace with workspace-config JSON | Per-desktop (automatic) |
+| Debounce | Real 300ms timer thread | Recursive callDBus polling (~1-5ms steps) |
+| Event source | JSON event-stream (external process) | Direct KWin signals (in-process) |
+| Thread model | Multi-threaded with Lock | Single-threaded (event loop) |
+| GUI | Noctalia bar widget + panel + settings | System Settings config dialog |
 
 ---
 
-## Logging
-
-The script logs to stdout with structured messages:
+## Repository Structure
 
 ```
-18:07:44 INFO auto-tile: starting (max_visible=4, mode=global, debounce=300ms)
-18:07:44 INFO auto-tile: tracking 4 existing windows
-18:08:01 INFO auto-tile: ws=3: 4 cols, max=4 -> 25% each (+0% last)
+auto-tile/
+├── niri-auto-tile/           # niri compositor version
+│   ├── auto-tile.py          #   Python daemon (core logic)
+│   ├── Main.qml              #   Noctalia plugin entry point
+│   ├── BarWidget.qml          #   Bar indicator widget
+│   ├── Panel.qml             #   Floating panel
+│   ├── Settings.qml          #   Settings page
+│   ├── manifest.json         #   Noctalia plugin manifest
+│   ├── settings.json         #   Default settings
+│   ├── i18n/                 #   Translation reference files
+│   └── PUBLISHING.md         #   Publishing guide
+├── kde-auto-tile/            # KDE Plasma 6 version
+│   ├── metadata.json         #   KWin Script metadata
+│   └── contents/
+│       ├── code/main.js      #   Core auto-tiling logic
+│       ├── config/main.xml   #   Configuration schema (KCfg)
+│       └── ui/config.ui      #   Settings UI (Qt Designer)
+├── LICENSE                   # MIT
+├── CLAUDE.md                 # Development guide
+└── README.md                 # This file
 ```
-
-When using systemd, view logs with:
-
-```bash
-journalctl --user -u niri-auto-tile -f
-```
-
----
-
-## Compatibility
-
-- **niri** v25.11+ (requires JSON event-stream support)
-- **Python** 3.10+ (uses `X | Y` union syntax)
-- **noctalia-shell** 4.4+ (for the plugin — optional)
-
-No external Python dependencies required — uses only the standard library.
-
----
-
-## Security
-
-This script has been through two rounds of multi-perspective security review (5 specialized agents each round). Key security properties:
-
-- **No shell injection** — all subprocess calls use list form, never `shell=True`
-- **No network access** — communicates only via local niri IPC
-- **No credentials or secrets** — reads only window metadata
-- **Input validation** — all IPC responses are type-checked and validated
-- **Thread safety** — all shared state protected by `threading.Lock`
-- **Rate limiting** — prevents event flood DoS
-- **Graceful shutdown** — SIGTERM handler without deadlock risk
-
----
-
-## Troubleshooting
-
-### Plugin not loading on boot (Noctalia)
-
-If the Quickshell logs show `Plugin niri-auto-tile is enabled but not found on disk`, the plugin files were missing when Noctalia started. Common causes:
-
-1. **Plugin was installed after niri started** — Noctalia only scans for plugins at startup. Restart `qs` after installing.
-2. **Symlink pointing to `/tmp`** — if you cloned into `/tmp/niri-auto-tile` and symlinked from the plugins directory, the symlink breaks on reboot because `/tmp` is cleared on every boot. Fix by re-cloning to a persistent path (e.g., `~/.config/noctalia/plugins/niri-auto-tile` or `~/projects/niri-auto-tile`) and updating the symlink:
-   ```bash
-   rm ~/.config/noctalia/plugins/niri-auto-tile
-   git clone https://github.com/pir0c0pter0/niri-auto-tile.git \
-     ~/.config/noctalia/plugins/niri-auto-tile
-   ```
-3. **Duplicate qs instances** — check if you have multiple `spawn-at-startup` / `spawn-sh-at-startup` entries for `qs -c noctalia-shell` across your niri config files (e.g., `config.kdl` + an included `autostart.kdl`). Keep only one.
-4. **sourceUrl is "local"** — when installed via `git clone`, the plugin's `sourceUrl` in `~/.config/noctalia/plugins.json` is set to `"local"`. This means Noctalia cannot auto-download the plugin if files are missing — you must re-clone manually.
-
-**How to check Quickshell logs:**
-
-```bash
-# Find the active qs log directory
-ls /run/user/1000/quickshell/by-id/
-
-# Search for plugin-related messages
-grep -i "auto-tile\|plugin" /run/user/1000/quickshell/by-id/*/log.log
-```
-
-### Bar widget not visible or disappeared after reboot
-
-The plugin daemon runs independently of the bar widget. If the plugin failed to load on a previous boot (e.g., broken symlink), Noctalia automatically removes `plugin:niri-auto-tile` from the bar configuration. Even after fixing the underlying issue, you must re-add the widget:
-
-1. Open **Noctalia Settings > Bar**
-2. Drag "Auto-Tile" (`plugin:niri-auto-tile`) to your bar
-3. Restart `qs` if needed
-
-### Windows don't redistribute
-
-1. Check if the script is running: `pgrep -f auto-tile.py`
-2. Check logs: `journalctl --user -u niri-auto-tile -f` or `/tmp/auto-tile.log`
-3. Verify niri IPC works: `niri msg -j windows`
-
-### Flickering when switching browser tabs
-
-This should not happen — the script filters title-change events. If it does:
-1. Increase `DEBOUNCE_SECONDS` to `0.5`
-2. Check logs for unexpected `WindowOpenedOrChanged` events with new IDs
-
-### Script crashes on startup
-
-Ensure niri is running and `niri msg -j event-stream` produces output. The script will auto-reconnect if the stream drops.
-
----
-
-## Contributing
-
-Contributions welcome! Please:
-
-1. Fork the repository
-2. Create a feature branch
-3. Test with at least 2-4 windows across multiple workspaces
-4. Submit a pull request
 
 ---
 
 ## License
 
-[MIT](LICENSE) — same as niri.
+[MIT](LICENSE)
 
 ---
 
@@ -360,7 +129,8 @@ Contributions welcome! Please:
 
 Developed by Pir0c0pter0 using [Claude Code](https://claude.ai/claude-code).
 
-## Acknowledgements
+### Acknowledgements
 
-- [niri](https://github.com/YaLTeR/niri) by YaLTeR — the scrollable-tiling Wayland compositor
-- [noctalia-shell](https://github.com/noctalia-dev/noctalia-shell) — the desktop shell framework
+- [niri](https://github.com/YaLTeR/niri) by YaLTeR — scrollable-tiling Wayland compositor
+- [noctalia-shell](https://github.com/noctalia-dev/noctalia-shell) — desktop shell framework
+- [KDE KWin](https://invent.kde.org/plasma/kwin) — KDE window manager with scripting API
