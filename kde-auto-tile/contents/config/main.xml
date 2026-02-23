@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+                          http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+    <kcfgfile name=""/>
+    <group name="">
+        <entry name="enabled" type="Bool">
+            <label>Enable auto-tiling</label>
+            <default>true</default>
+        </entry>
+        <entry name="maxVisible" type="Int">
+            <label>Maximum visible columns</label>
+            <default>4</default>
+            <min>1</min>
+            <max>8</max>
+        </entry>
+        <entry name="debounceMs" type="Int">
+            <label>Debounce delay in milliseconds</label>
+            <default>300</default>
+            <min>50</min>
+            <max>1000</max>
+        </entry>
+        <entry name="maxEventsPerSecond" type="Int">
+            <label>Maximum events per second (rate limit)</label>
+            <default>20</default>
+            <min>5</min>
+            <max>50</max>
+        </entry>
+        <entry name="gapSize" type="Int">
+            <label>Gap between windows in pixels</label>
+            <default>8</default>
+            <min>0</min>
+            <max>32</max>
+        </entry>
+        <entry name="respectMinimized" type="Bool">
+            <label>Exclude minimized windows from tiling</label>
+            <default>true</default>
+        </entry>
+        <entry name="filterByClass" type="String">
+            <label>Window classes to exclude (one per line)</label>
+            <default></default>
+        </entry>
+    </group>
+</kcfg>

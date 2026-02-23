@@ -4,68 +4,78 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What This Is
 
-niri-auto-tile is an auto-tiling daemon for the [niri](https://github.com/YaLTeR/niri) scrollable-tiling Wayland compositor. It listens to niri's JSON event stream and redistributes column widths evenly when windows open or close. It works both as a standalone Python script and as a [Noctalia Shell](https://github.com/noctalia-dev/noctalia-shell) plugin (v4.4+).
+Auto-tile is a monorepo with two independent auto-tiling implementations for Linux desktops. Both distribute windows in equal-width columns automatically when windows open or close.
+
+| Directory | Platform | Tech |
+|-----------|----------|------|
+| `niri-auto-tile/` | niri compositor | Python daemon + Noctalia Shell QML plugin |
+| `kde-auto-tile/` | KDE Plasma 6 | KWin Script (JavaScript) |
 
 ## Running
 
-**Standalone daemon:**
+**niri (standalone daemon):**
 ```bash
-python3 auto-tile.py --max-visible 4 --debounce 0.3 --debug
+python3 niri-auto-tile/auto-tile.py --max-visible 4 --debounce 0.3 --debug
 ```
 
-**As Noctalia plugin:** Install to `~/.config/noctalia/plugins/niri-auto-tile/`, enable in Noctalia Settings. The QML layer (`Main.qml`) manages the daemon process lifecycle automatically.
+**niri (Noctalia plugin):** Install `niri-auto-tile/` to `~/.config/noctalia/plugins/niri-auto-tile/`, enable in Noctalia Settings.
 
-There is no build step, test suite, or linter configured. The Python script uses only the standard library (no dependencies).
+**KDE Plasma 6:**
+```bash
+kpackagetool6 --type=KWin/Script -i kde-auto-tile/
+kwriteconfig6 --file kwinrc --group Plugins --key kwin-auto-tileEnabled true
+qdbus6 org.kde.KWin /KWin reconfigure
+```
+
+There is no build step, test suite, or linter configured. The Python script uses only the standard library. The KWin script uses only built-in KWin JS APIs.
 
 ## Architecture
 
-### Two-layer design
+### niri-auto-tile — Two-layer design
 
-1. **Python daemon** (`auto-tile.py`) — the core logic. Runs as a long-lived process that connects to `niri msg -j event-stream`, filters events, debounces, and calls `niri msg action` to resize columns. Can run completely standalone without Noctalia.
+1. **Python daemon** (`niri-auto-tile/auto-tile.py`) — core logic. Connects to `niri msg -j event-stream`, filters events, debounces, and calls `niri msg action` to resize columns.
 
-2. **QML plugin layer** (Noctalia Shell integration) — provides GUI controls. `Main.qml` spawns/stops the Python daemon as a child process, passing settings as CLI args. The QML files depend on Noctalia/Quickshell APIs (`qs.Commons`, `qs.Widgets`, `qs.Services.UI`).
+2. **QML plugin layer** (Noctalia Shell) — GUI controls. `Main.qml` spawns/stops the Python daemon, passing settings as CLI args. QML files depend on Noctalia/Quickshell APIs.
 
-### Event flow (Python daemon)
+**Event flow:** `niri event-stream → Event Filter (new window IDs only) → Rate Limiter → Debounce Timer → Redistribute All Workspaces → Restore Focus`
 
-```
-niri event-stream → Event Filter (new window IDs only) → Rate Limiter → Debounce Timer → Redistribute All Workspaces → Restore Focus
-```
-
-Key detail: `WindowOpenedOrChanged` events are filtered by tracking `_known_window_ids`. Only truly new window IDs trigger redistribution — title changes (e.g., browser tab switches) are ignored.
-
-### QML entry points (defined in `manifest.json`)
+**QML entry points** (defined in `niri-auto-tile/manifest.json`):
 
 | File | Role |
 |------|------|
-| `Main.qml` | Daemon lifecycle (start/stop/restart), IPC handler, settings bridge, self-contained i18n |
-| `BarWidget.qml` | Bar indicator with column count visualization and status dot |
-| `Panel.qml` | Floating panel with visual 1-4 column grid selector |
-| `Settings.qml` | Full settings page (toggles, sliders, status indicator) |
+| `Main.qml` | Daemon lifecycle, IPC, settings bridge, i18n |
+| `BarWidget.qml` | Bar indicator with column count and status dot |
+| `Panel.qml` | Floating panel with visual column selector |
+| `Settings.qml` | Full settings page |
 
-All QML components receive `pluginApi` from Noctalia and access the daemon instance via `pluginApi.mainInstance`. Settings are persisted through `pluginApi.saveSettings()`. Colors are entirely theme-driven (no hardcoded values).
+**Niri IPC:** All communication uses `subprocess.run(["niri", "msg", ...])` in list form (never `shell=True`).
 
-### Niri IPC
+**Thread safety:** Shared state protected by `threading.Lock`. Debounce timer fires on a separate thread.
 
-All communication with niri uses `subprocess.run(["niri", "msg", ...])` in list form (never `shell=True`). Two helper functions:
-- `niri_cmd(*args)` — queries that return JSON (windows, workspaces, focused-window)
-- `niri_action(*args)` — fire-and-forget actions (focus-window, set-column-width, center-visible-columns)
+### kde-auto-tile — KWin Script
 
-### Thread safety
+Single file (`kde-auto-tile/contents/code/main.js`) with 10 sections:
 
-Shared mutable state (`_known_window_ids`, `_prev_col_counts`, `_debounce_timer`, rate limiter counters) is protected by a single `threading.Lock`. The debounce timer fires `redistribute()` on a separate thread.
+1. **Configuration** — `readConfig()` from KCfg
+2. **State** — window tracking, layout cache, rate limiter
+3. **Window Filtering** — `isTileable()` rejects dialogs, docks, tooltips, minimized, fullscreen, excluded classes
+4. **Window Grouping** — groups by `(desktop.id, output.name)`, handles `onAllDesktops`
+5. **Redistribution** — `width = (screen - gaps) / maxVisible`, stable insertion order sort
+6. **Debounce** — recursive `callDBus` polling with timestamp superseding
+7. **Event Handlers** — signals: `windowAdded/Removed`, `minimizedChanged`, `fullScreenChanged`, `desktopsChanged`, `outputChanged`
+8. **Keyboard Shortcuts** — `Meta+Ctrl+1-4` (columns), `Meta+Ctrl+T` (re-tile)
+9. **Context Menu** — `registerUserActionsMenu` for per-window exclude/include
+10. **Initialization** — connect signals, track existing windows, initial redistribute
 
-## i18n
+**Config UI:** `kde-auto-tile/contents/config/main.xml` (KCfg schema) + `kde-auto-tile/contents/ui/config.ui` (Qt Designer). Widgets named `kcfg_*` auto-bind to config entries.
 
-The plugin uses a **self-contained translation system** embedded in `Main.qml`. All EN and PT strings are defined as inline objects (`_enStrings`, `_ptStrings`) and resolved via `translate(key)`. This avoids dependency on the framework's `pluginApi.tr()`.
+**Key difference from niri:** KWin has no scrollable viewport, so overflow windows (beyond maxVisible) are moved off-screen to the right.
 
-- **Language selection**: Configurable in Settings (Auto / English / Portuguese). The `auto` option detects the system locale via `Qt.locale().name`.
-- **Live switching**: Changing language triggers `reloadLanguage()` which updates `_translations` and increments `translationVersion`. All QML components listen for `onTranslationVersionChanged` via `Connections` and re-render.
-- **Access pattern**: Each QML component defines a local `t(key)` helper that calls `pluginApi.mainInstance.translate(key)`. Fallback uses `??` to English hardcoded strings.
-- **Key namespacing**: `panel.*`, `bar.*`, `settings.*`.
-- **Reference files**: `i18n/en.json` and `i18n/pt.json` serve as translation key reference but are **not loaded at runtime** — the strings are embedded in `Main.qml`.
+## i18n (niri only)
+
+Self-contained translation system in `niri-auto-tile/Main.qml`. EN and PT strings inline, resolved via `translate(key)`. Live switching via `reloadLanguage()` + `translationVersion` signal.
 
 ## Requirements
 
-- **niri** v25.11+ (JSON event-stream support)
-- **Python** 3.10+ (uses `X | Y` union type syntax)
-- **Noctalia Shell** 4.4+ (for the plugin UI — optional)
+**niri:** niri v25.11+, Python 3.10+, Noctalia Shell 4.4+ (optional)
+**KDE:** KDE Plasma 6 (KWin 6.x)
