@@ -20,7 +20,8 @@ Niri is a scrollable-tiling Wayland compositor where windows are arranged in col
 ### Features
 
 - **Automatic redistribution** — columns resize instantly on window open/close
-- **Multi-workspace support** — redistributes all active workspaces, restoring original focus afterwards
+- **Primary-monitor scope (default)** — redistributes only active workspaces on the primary output
+- **Optional all-monitor scope** — use `--all-workspaces` to redistribute active workspaces on every output
 - **Configurable max visible columns** — caps how many columns fit on screen (default: 4)
 - **Per-workspace settings** — each workspace can have its own column count
 - **Only at max mode** — only redistribute when column count reaches the configured maximum
@@ -151,6 +152,7 @@ python3 auto-tile.py \
   --max-visible 4 \
   --debounce 0.3 \
   --max-events 20 \
+  --primary-output DP-1 \
   --per-workspace \
   --workspace-config '{"3":2,"1":4}' \
   --debug
@@ -167,6 +169,8 @@ python3 auto-tile.py \
 | `RECONNECT_DELAY` | `2.0` | Delay before reconnecting after event stream drops |
 | `MAX_EVENTS_PER_SECOND` | `20` | Rate limiter threshold |
 | `PER_WORKSPACE` | `False` | Per-workspace column count settings |
+| `ONLY_PRIMARY_OUTPUT` | `True` | Limit redistribution to the primary output |
+| `PRIMARY_OUTPUT` | `None` | Explicit primary output override (auto-detected if unset) |
 
 ### Recommended niri layout
 
@@ -205,18 +209,20 @@ niri event-stream (JSON)
    Save Original Focus   — remember current workspace and focused window
          |
          v
-   Redistribute All      — set-column-width for each column on every active workspace
+   Redistribute Target   — set-column-width for each column on target active workspaces
          |
          v
    Restore Focus         — return to original workspace and window
 ```
 
-### Multi-Workspace Redistribution
+### Workspace Scope
 
 When a window event triggers redistribution:
 
 1. The daemon saves the currently focused workspace and window
-2. Iterates through all active workspaces with tiled windows
+2. Selects target workspaces:
+   - default: active workspaces on the primary output
+   - with `--all-workspaces`: active workspaces on all outputs
 3. For each workspace, focuses a window there, walks columns, and sets equal widths
 4. After all workspaces are processed, restores focus to the original window
 5. If no window was focused (e.g., panel was open), falls back to focusing any window on the original workspace via `niri msg -j workspaces`
@@ -250,7 +256,7 @@ The last column absorbs any rounding remainder to ensure widths sum to exactly 1
 The script logs to stdout with structured messages:
 
 ```
-18:07:44 INFO auto-tile: starting (max_visible=4, mode=global, debounce=300ms)
+18:07:44 INFO auto-tile: starting (max_visible=4, mode=global, scope=primary=auto, debounce=300ms)
 18:07:44 INFO auto-tile: tracking 4 existing windows
 18:08:01 INFO auto-tile: ws=3: 4 cols, max=4 -> 25% each (+0% last)
 ```
