@@ -100,13 +100,13 @@ Item {
             var items = [];
             items.push({
                 "label": isEnabled
-                    ? (root.t("bar.disable") ?? "Disable Auto-Tile")
-                    : (root.t("bar.enable") ?? "Enable Auto-Tile"),
+                    ? root.t("bar.disable")
+                    : root.t("bar.enable"),
                 "action": "toggle",
                 "icon": isEnabled ? "player-pause" : "player-play"
             });
             items.push({
-                "label": root.t("bar.settings") ?? "Settings",
+                "label": root.t("bar.settings"),
                 "action": "widget-settings",
                 "icon": "flask"
             });
@@ -140,7 +140,7 @@ Item {
         onClicked: (mouse) => {
             if (mouse.button === Qt.LeftButton) {
                 if (pluginApi) {
-                    pluginApi.togglePanel(root.screen, root);
+                    pluginApi.openPanel(root.screen, root);
                 }
             } else if (mouse.button === Qt.RightButton) {
                 PanelService.showContextMenu(contextMenu, root, screen);

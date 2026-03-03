@@ -111,7 +111,7 @@ Item {
                         }
 
                         NText {
-                            text: root.t("panel.title") ?? "Column Layout"
+                            text: root.t("panel.title")
                             pointSize: Style.fontSizeL
                             font.bold: true
                             color: Color.mOnSurface
@@ -197,8 +197,8 @@ Item {
                                     NText {
                                         Layout.alignment: Qt.AlignHCenter
                                         text: layoutOption.columnCount === 1
-                                            ? (root.t("panel.single") ?? "Single")
-                                            : (root.t("panel.columns") ?? "%1 Columns").arg(layoutOption.columnCount)
+                                            ? root.t("panel.single")
+                                            : root.t("panel.columns").arg(layoutOption.columnCount)
                                         pointSize: Style.fontSizeS
                                         font.bold: layoutOption.isSelected
                                         color: layoutOption.isSelected ? Color.mPrimary : Color.mOnSurface
@@ -237,15 +237,15 @@ Item {
 
                         NText {
                             text: {
-                                if (!root.isEnabled) return root.t("panel.status-disabled") ?? "Disabled";
+                                if (!root.isEnabled) return root.t("panel.status-disabled");
                                 if (root.isRunning) {
-                                    const label = (root.t("panel.status-active") ?? "Active — %1 columns").arg(root.currentMaxVisible);
+                                    const label = root.t("panel.status-active").arg(root.currentMaxVisible);
                                     if (root.perWorkspace && root.currentWorkspaceId > 0) {
                                         return label + " (WS " + root.currentWorkspaceId + ")";
                                     }
                                     return label;
                                 }
-                                return root.t("panel.status-starting") ?? "Starting...";
+                                return root.t("panel.status-starting");
                             }
                             pointSize: Style.fontSizeS
                             color: Qt.alpha(Color.mOnSurface, 0.6)

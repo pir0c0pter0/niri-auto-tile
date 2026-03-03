@@ -51,8 +51,8 @@ ColumnLayout {
         spacing: Style.marginS
 
         NLabel {
-            label: root.t("settings.language") ?? "Language"
-            description: root.t("settings.language-desc") ?? "Plugin display language"
+            label: root.t("settings.language")
+            description: root.t("settings.language-desc")
         }
 
         RowLayout {
@@ -68,9 +68,9 @@ ColumnLayout {
                     readonly property string langCode: modelData
                     readonly property bool isSelected: root.valueLanguage === langCode
                     readonly property string langLabel: {
-                        if (langCode === "auto") return root.t("settings.lang-auto") ?? "Auto";
-                        if (langCode === "en") return root.t("settings.lang-en") ?? "English";
-                        return root.t("settings.lang-pt") ?? "Português";
+                        if (langCode === "auto") return root.t("settings.lang-auto");
+                        if (langCode === "en") return root.t("settings.lang-en");
+                        return root.t("settings.lang-pt");
                     }
 
                     Layout.fillWidth: true
@@ -110,8 +110,8 @@ ColumnLayout {
     // ─── Enable / Disable ───
     NToggle {
         Layout.fillWidth: true
-        label: root.t("settings.enabled") ?? "Enable Auto-Tile"
-        description: root.t("settings.enabled-desc") ?? "Automatically redistribute column widths when windows open or close"
+        label: root.t("settings.enabled")
+        description: root.t("settings.enabled-desc")
         checked: root.valueEnabled
         onToggled: checked => {
             root.valueEnabled = checked;
@@ -122,8 +122,8 @@ ColumnLayout {
     // ─── Per Workspace ───
     NToggle {
         Layout.fillWidth: true
-        label: root.t("settings.per-workspace") ?? "Per workspace"
-        description: root.t("settings.per-workspace-desc") ?? "Each workspace has its own column count setting"
+        label: root.t("settings.per-workspace")
+        description: root.t("settings.per-workspace-desc")
         checked: root.valuePerWorkspace
         onToggled: checked => {
             root.valuePerWorkspace = checked;
@@ -138,8 +138,8 @@ ColumnLayout {
         spacing: Style.marginS
 
         NLabel {
-            label: (root.t("settings.max-visible") ?? "Max visible columns") + ": " + root.valueMaxVisible
-            description: root.t("settings.max-visible-desc") ?? "Maximum number of columns visible on screen at once"
+            label: root.t("settings.max-visible") + ": " + root.valueMaxVisible
+            description: root.t("settings.max-visible-desc")
         }
 
         NSlider {
@@ -162,8 +162,8 @@ ColumnLayout {
         spacing: Style.marginS
 
         NLabel {
-            label: (root.t("settings.debounce") ?? "Debounce delay") + ": " + root.valueDebounceMs + "ms"
-            description: root.t("settings.debounce-desc") ?? "Delay before redistribution to coalesce rapid events"
+            label: root.t("settings.debounce") + ": " + root.valueDebounceMs + "ms"
+            description: root.t("settings.debounce-desc")
         }
 
         NSlider {
@@ -186,8 +186,8 @@ ColumnLayout {
         spacing: Style.marginS
 
         NLabel {
-            label: (root.t("settings.rate-limit") ?? "Rate limit") + ": " + root.valueMaxEventsPerSecond + "/s"
-            description: root.t("settings.rate-limit-desc") ?? "Maximum events processed per second"
+            label: root.t("settings.rate-limit") + ": " + root.valueMaxEventsPerSecond + "/s"
+            description: root.t("settings.rate-limit-desc")
         }
 
         NSlider {
@@ -225,9 +225,9 @@ ColumnLayout {
         NText {
             text: {
                 const status = pluginApi?.mainInstance?.status ?? "stopped";
-                if (status === "running") return root.t("settings.status-running") ?? "Daemon running";
-                if (status === "error") return root.t("settings.status-error") ?? "Daemon error — restarting...";
-                return root.t("settings.status-stopped") ?? "Daemon stopped";
+                if (status === "running") return root.t("settings.status-running");
+                if (status === "error") return root.t("settings.status-error");
+                return root.t("settings.status-stopped");
             }
             Layout.fillWidth: true
         }
@@ -240,18 +240,18 @@ ColumnLayout {
         spacing: 4
 
         NText {
-            text: root.t("settings.about-title") ?? "About"
+            text: root.t("settings.about-title")
             font.bold: true
         }
 
         NText {
-            text: root.t("settings.about-credit") ?? "Developed by Pir0c0pter0 using Claude"
+            text: root.t("settings.about-credit")
             opacity: 0.7
             font.pixelSize: 12
         }
 
         NText {
-            text: (root.t("settings.about-date") ?? "Date") + ": 2026-02-19"
+            text: root.t("settings.about-date") + ": 2026-02-19"
             opacity: 0.5
             font.pixelSize: 11
         }
