@@ -364,7 +364,7 @@ Contributions welcome! Please:
 
 ## Credits
 
-Developed by Pir0c0pter0 using [Claude Code](https://claude.ai/claude-code).
+Developed by Pir0c0pter0 (pir0c0pter0000@gmail.com) using [Claude Code](https://claude.ai/claude-code).
 
 ## Acknowledgements
 
