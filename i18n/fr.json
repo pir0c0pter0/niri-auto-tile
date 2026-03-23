@@ -1,0 +1,38 @@
+{
+  "panel": {
+    "title": "Disposition des colonnes",
+    "single": "Une",
+    "columns": "%1 Colonnes",
+    "status-active": "Actif — %1 colonnes",
+    "status-starting": "Démarrage...",
+    "status-disabled": "Désactivé"
+  },
+  "bar": {
+    "running": "Auto-Tile: en cours (%1 colonnes)",
+    "starting": "Auto-Tile: démarrage...",
+    "disabled": "Auto-Tile: désactivé",
+    "enable": "Activer Auto-Tile",
+    "disable": "Désactiver Auto-Tile",
+    "settings": "Paramètres"
+  },
+  "settings": {
+    "enabled": "Activer Auto-Tile",
+    "enabled-desc": "Redistribuer automatiquement les largeurs de colonnes à l'ouverture ou fermeture de fenêtres",
+    "per-workspace": "Par espace de travail",
+    "per-workspace-desc": "Chaque espace de travail a sa propre configuration de colonnes",
+    "only-at-max": "Uniquement au maximum",
+    "only-at-max-desc": "Redistribuer uniquement lorsque le nombre de colonnes atteint le maximum",
+    "max-visible": "Colonnes visibles",
+    "max-visible-desc": "Nombre maximal de colonnes visibles simultanément à l'écran",
+    "debounce": "Délai de debounce",
+    "debounce-desc": "Délai avant redistribution pour regrouper les événements rapides",
+    "rate-limit": "Limite d'événements",
+    "rate-limit-desc": "Nombre maximal d'événements traités par seconde",
+    "status-running": "Daemon en cours d'exécution",
+    "status-error": "Erreur du daemon — redémarrage...",
+    "status-stopped": "Daemon arrêté",
+    "about-title": "À propos",
+    "about-credit": "Développé par Pir0c0pter0 avec Claude",
+    "about-date": "Date"
+  }
+}
