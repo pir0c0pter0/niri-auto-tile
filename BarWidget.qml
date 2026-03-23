@@ -28,20 +28,6 @@ Item {
     readonly property real barHeight: Style.getBarHeightForScreen(screenName)
     readonly property real capsuleHeight: Style.getCapsuleHeightForScreen(screenName)
 
-    property int _langVersion: 0
-
-    Connections {
-        target: pluginApi?.mainInstance ?? null
-        function onTranslationVersionChanged() {
-            root._langVersion++;
-        }
-    }
-
-    function t(key) {
-        if (_langVersion < 0) return undefined;
-        return pluginApi?.mainInstance?.translate(key);
-    }
-
     readonly property real contentWidth: {
         if (isVertical) return root.capsuleHeight;
         return columnIndicator.implicitWidth + Style.marginM * 2;
@@ -100,13 +86,13 @@ Item {
             var items = [];
             items.push({
                 "label": isEnabled
-                    ? root.t("bar.disable")
-                    : root.t("bar.enable"),
+                    ? (pluginApi?.tr("bar.disable") ?? "Disable Auto-Tile")
+                    : (pluginApi?.tr("bar.enable") ?? "Enable Auto-Tile"),
                 "action": "toggle",
                 "icon": isEnabled ? "player-pause" : "player-play"
             });
             items.push({
-                "label": root.t("bar.settings"),
+                "label": pluginApi?.tr("bar.settings") ?? "Settings",
                 "action": "widget-settings",
                 "icon": "flask"
             });
@@ -140,7 +126,7 @@ Item {
         onClicked: (mouse) => {
             if (mouse.button === Qt.LeftButton) {
                 if (pluginApi) {
-                    pluginApi.openPanel(root.screen, root);
+                    pluginApi.togglePanel(root.screen, root);
                 }
             } else if (mouse.button === Qt.RightButton) {
                 PanelService.showContextMenu(contextMenu, root, screen);

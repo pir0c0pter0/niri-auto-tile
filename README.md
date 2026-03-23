@@ -20,8 +20,7 @@ Niri is a scrollable-tiling Wayland compositor where windows are arranged in col
 ### Features
 
 - **Automatic redistribution** — columns resize instantly on window open/close
-- **Primary-monitor scope (default)** — redistributes only active workspaces on the primary output
-- **Optional all-monitor scope** — use `--all-workspaces` to redistribute active workspaces on every output
+- **Multi-workspace support** — redistributes all active workspaces, restoring original focus afterwards
 - **Configurable max visible columns** — caps how many columns fit on screen (default: 4)
 - **Per-workspace settings** — each workspace can have its own column count
 - **Only at max mode** — only redistribute when column count reaches the configured maximum
@@ -71,22 +70,9 @@ If you use [noctalia-shell](https://github.com/noctalia-dev/noctalia-shell), thi
      ~/.config/noctalia/plugins/niri-auto-tile
    ```
 
-   > **Warning:** Do not clone into `/tmp` and symlink — `/tmp` is cleared on reboot, breaking the plugin. Always use a persistent path.
-
 2. **Enable** in Noctalia Settings > Plugins > niri-auto-tile
 
 3. **Add the bar widget** — drag "Auto-Tile" to your bar in Noctalia Settings > Bar
-
-4. **Restart Noctalia** — the plugin only loads on shell startup, so you need to restart `qs` after installing:
-
-   ```bash
-   # Find and kill the running qs instance
-   pkill -f "qs -c noctalia-shell"
-   # niri will respawn it on next login, or start it manually:
-   qs -c noctalia-shell &
-   ```
-
-> **Important:** Make sure you only have **one** `spawn-at-startup` or `spawn-sh-at-startup` entry for `qs -c noctalia-shell` in your niri config. Having duplicates (e.g., one in `config.kdl` and another in an included file like `autostart.kdl`) will spawn multiple shell instances and cause conflicts.
 
 ### Systemd User Service (optional)
 
@@ -152,7 +138,7 @@ python3 auto-tile.py \
   --max-visible 4 \
   --debounce 0.3 \
   --max-events 20 \
-  --primary-output DP-1 \
+  --only-at-max \
   --per-workspace \
   --workspace-config '{"3":2,"1":4}' \
   --debug
@@ -169,8 +155,7 @@ python3 auto-tile.py \
 | `RECONNECT_DELAY` | `2.0` | Delay before reconnecting after event stream drops |
 | `MAX_EVENTS_PER_SECOND` | `20` | Rate limiter threshold |
 | `PER_WORKSPACE` | `False` | Per-workspace column count settings |
-| `ONLY_PRIMARY_OUTPUT` | `True` | Limit redistribution to the primary output |
-| `PRIMARY_OUTPUT` | `None` | Explicit primary output override (auto-detected if unset) |
+| `ONLY_AT_MAX` | `True` | Only redistribute at or above max visible |
 
 ### Recommended niri layout
 
@@ -209,20 +194,18 @@ niri event-stream (JSON)
    Save Original Focus   — remember current workspace and focused window
          |
          v
-   Redistribute Target   — set-column-width for each column on target active workspaces
+   Redistribute All      — set-column-width for each column on every active workspace
          |
          v
    Restore Focus         — return to original workspace and window
 ```
 
-### Workspace Scope
+### Multi-Workspace Redistribution
 
 When a window event triggers redistribution:
 
 1. The daemon saves the currently focused workspace and window
-2. Selects target workspaces:
-   - default: active workspaces on the primary output
-   - with `--all-workspaces`: active workspaces on all outputs
+2. Iterates through all active workspaces with tiled windows
 3. For each workspace, focuses a window there, walks columns, and sets equal widths
 4. After all workspaces are processed, restores focus to the original window
 5. If no window was focused (e.g., panel was open), falls back to focusing any window on the original workspace via `niri msg -j workspaces`
@@ -256,7 +239,7 @@ The last column absorbs any rounding remainder to ensure widths sum to exactly 1
 The script logs to stdout with structured messages:
 
 ```
-18:07:44 INFO auto-tile: starting (max_visible=4, mode=global, scope=primary=auto, debounce=300ms)
+18:07:44 INFO auto-tile: starting (max_visible=4, mode=global, debounce=300ms)
 18:07:44 INFO auto-tile: tracking 4 existing windows
 18:08:01 INFO auto-tile: ws=3: 4 cols, max=4 -> 25% each (+0% last)
 ```
@@ -295,38 +278,6 @@ This script has been through two rounds of multi-perspective security review (5 
 
 ## Troubleshooting
 
-### Plugin not loading on boot (Noctalia)
-
-If the Quickshell logs show `Plugin niri-auto-tile is enabled but not found on disk`, the plugin files were missing when Noctalia started. Common causes:
-
-1. **Plugin was installed after niri started** — Noctalia only scans for plugins at startup. Restart `qs` after installing.
-2. **Symlink pointing to `/tmp`** — if you cloned into `/tmp/niri-auto-tile` and symlinked from the plugins directory, the symlink breaks on reboot because `/tmp` is cleared on every boot. Fix by re-cloning to a persistent path (e.g., `~/.config/noctalia/plugins/niri-auto-tile` or `~/projects/niri-auto-tile`) and updating the symlink:
-   ```bash
-   rm ~/.config/noctalia/plugins/niri-auto-tile
-   git clone https://github.com/pir0c0pter0/niri-auto-tile.git \
-     ~/.config/noctalia/plugins/niri-auto-tile
-   ```
-3. **Duplicate qs instances** — check if you have multiple `spawn-at-startup` / `spawn-sh-at-startup` entries for `qs -c noctalia-shell` across your niri config files (e.g., `config.kdl` + an included `autostart.kdl`). Keep only one.
-4. **sourceUrl is "local"** — when installed via `git clone`, the plugin's `sourceUrl` in `~/.config/noctalia/plugins.json` is set to `"local"`. This means Noctalia cannot auto-download the plugin if files are missing — you must re-clone manually.
-
-**How to check Quickshell logs:**
-
-```bash
-# Find the active qs log directory
-ls /run/user/1000/quickshell/by-id/
-
-# Search for plugin-related messages
-grep -i "auto-tile\|plugin" /run/user/1000/quickshell/by-id/*/log.log
-```
-
-### Bar widget not visible or disappeared after reboot
-
-The plugin daemon runs independently of the bar widget. If the plugin failed to load on a previous boot (e.g., broken symlink), Noctalia automatically removes `plugin:niri-auto-tile` from the bar configuration. Even after fixing the underlying issue, you must re-add the widget:
-
-1. Open **Noctalia Settings > Bar**
-2. Drag "Auto-Tile" (`plugin:niri-auto-tile`) to your bar
-3. Restart `qs` if needed
-
 ### Windows don't redistribute
 
 1. Check if the script is running: `pgrep -f auto-tile.py`
@@ -364,7 +315,7 @@ Contributions welcome! Please:
 
 ## Credits
 
-Developed by Pir0c0pter0 (pir0c0pter0000@gmail.com) using [Claude Code](https://claude.ai/claude-code).
+Developed by Pir0c0pter0 using [Claude Code](https://claude.ai/claude-code).
 
 ## Acknowledgements
 

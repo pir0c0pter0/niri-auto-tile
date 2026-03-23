@@ -20,6 +20,8 @@
     "enabled-desc": "Redistribuir automaticamente as larguras das colunas ao abrir ou fechar janelas",
     "per-workspace": "Por workspace",
     "per-workspace-desc": "Cada workspace tem sua propria configuracao de colunas",
+    "only-at-max": "So no maximo",
+    "only-at-max-desc": "Redistribuir apenas quando o numero de colunas atingir o maximo",
     "max-visible": "Colunas visiveis",
     "max-visible-desc": "Numero maximo de colunas visiveis na tela simultaneamente",
     "debounce": "Atraso de debounce",
@@ -30,12 +32,7 @@
     "status-error": "Erro no daemon — reiniciando...",
     "status-stopped": "Daemon parado",
     "about-title": "Sobre",
-    "about-credit": "Desenvolvido por Pir0c0pter0 (pir0c0pter0000@gmail.com) usando Claude",
-    "about-date": "Data",
-    "language": "Idioma",
-    "language-desc": "Idioma de exibicao do plugin",
-    "lang-auto": "Auto",
-    "lang-en": "Ingles",
-    "lang-pt": "Portugues"
+    "about-credit": "Desenvolvido por Pir0c0pter0 usando Claude",
+    "about-date": "Data"
   }
 }

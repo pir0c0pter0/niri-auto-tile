@@ -13,24 +13,10 @@ ColumnLayout {
 
     property bool valueEnabled: settings.enabled ?? defaults.enabled ?? true
     property bool valuePerWorkspace: settings.perWorkspace ?? defaults.perWorkspace ?? false
+    property bool valueOnlyAtMax: settings.onlyAtMax ?? defaults.onlyAtMax ?? true
     property int valueMaxVisible: settings.maxVisible ?? defaults.maxVisible ?? 4
     property int valueDebounceMs: settings.debounceMs ?? defaults.debounceMs ?? 300
     property int valueMaxEventsPerSecond: settings.maxEventsPerSecond ?? defaults.maxEventsPerSecond ?? 20
-    property string valueLanguage: settings.language ?? defaults.language ?? "auto"
-
-    property int _langVersion: 0
-
-    Connections {
-        target: pluginApi?.mainInstance ?? null
-        function onTranslationVersionChanged() {
-            root._langVersion++;
-        }
-    }
-
-    function t(key) {
-        if (_langVersion < 0) return undefined;
-        return pluginApi?.mainInstance?.translate(key);
-    }
 
     spacing: Style.marginM
 
@@ -38,80 +24,18 @@ ColumnLayout {
         if (!pluginApi) return;
         pluginApi.pluginSettings.enabled = root.valueEnabled;
         pluginApi.pluginSettings.perWorkspace = root.valuePerWorkspace;
+        pluginApi.pluginSettings.onlyAtMax = root.valueOnlyAtMax;
         pluginApi.pluginSettings.maxVisible = root.valueMaxVisible;
         pluginApi.pluginSettings.debounceMs = root.valueDebounceMs;
         pluginApi.pluginSettings.maxEventsPerSecond = root.valueMaxEventsPerSecond;
-        pluginApi.pluginSettings.language = root.valueLanguage;
         pluginApi.saveSettings();
-    }
-
-    // ─── Language ───
-    ColumnLayout {
-        Layout.fillWidth: true
-        spacing: Style.marginS
-
-        NLabel {
-            label: root.t("settings.language")
-            description: root.t("settings.language-desc")
-        }
-
-        RowLayout {
-            Layout.fillWidth: true
-            spacing: Style.marginS
-
-            Repeater {
-                model: ["auto", "en", "pt"]
-
-                delegate: Rectangle {
-                    required property string modelData
-                    required property int index
-                    readonly property string langCode: modelData
-                    readonly property bool isSelected: root.valueLanguage === langCode
-                    readonly property string langLabel: {
-                        if (langCode === "auto") return root.t("settings.lang-auto");
-                        if (langCode === "en") return root.t("settings.lang-en");
-                        return root.t("settings.lang-pt");
-                    }
-
-                    Layout.fillWidth: true
-                    implicitHeight: 32
-                    radius: Style.iRadiusM
-                    color: isSelected ? Qt.alpha(Color.mPrimary, 0.15) : Color.mSurfaceVariant
-                    border.color: isSelected ? Color.mPrimary : (langMouse.containsMouse ? Color.mOutline : "transparent")
-                    border.width: isSelected ? 2 : 1
-
-                    Behavior on color { ColorAnimation { duration: Style.animationFast } }
-                    Behavior on border.color { ColorAnimation { duration: Style.animationFast } }
-
-                    NText {
-                        anchors.centerIn: parent
-                        text: parent.langLabel
-                        font.bold: parent.isSelected
-                        color: parent.isSelected ? Color.mPrimary : Color.mOnSurface
-                    }
-
-                    MouseArea {
-                        id: langMouse
-                        anchors.fill: parent
-                        hoverEnabled: true
-                        cursorShape: Qt.PointingHandCursor
-                        onClicked: {
-                            root.valueLanguage = langCode;
-                            root.saveSettings();
-                            pluginApi?.mainInstance?.reloadLanguage(langCode);
-                            root._langVersion++;
-                        }
-                    }
-                }
-            }
-        }
     }
 
     // ─── Enable / Disable ───
     NToggle {
         Layout.fillWidth: true
-        label: root.t("settings.enabled")
-        description: root.t("settings.enabled-desc")
+        label: pluginApi?.tr("settings.enabled") ?? "Enable Auto-Tile"
+        description: pluginApi?.tr("settings.enabled-desc") ?? "Automatically redistribute column widths when windows open or close"
         checked: root.valueEnabled
         onToggled: checked => {
             root.valueEnabled = checked;
@@ -122,11 +46,24 @@ ColumnLayout {
     // ─── Per Workspace ───
     NToggle {
         Layout.fillWidth: true
-        label: root.t("settings.per-workspace")
-        description: root.t("settings.per-workspace-desc")
+        label: pluginApi?.tr("settings.per-workspace") ?? "Per workspace"
+        description: pluginApi?.tr("settings.per-workspace-desc") ?? "Each workspace has its own column count setting"
         checked: root.valuePerWorkspace
         onToggled: checked => {
             root.valuePerWorkspace = checked;
+            root.saveSettings();
+            pluginApi?.mainInstance?.restartDaemon();
+        }
+    }
+
+    // ─── Only at Max ───
+    NToggle {
+        Layout.fillWidth: true
+        label: pluginApi?.tr("settings.only-at-max") ?? "Only at max"
+        description: pluginApi?.tr("settings.only-at-max-desc") ?? "Only redistribute when column count reaches the maximum"
+        checked: root.valueOnlyAtMax
+        onToggled: checked => {
+            root.valueOnlyAtMax = checked;
             root.saveSettings();
             pluginApi?.mainInstance?.restartDaemon();
         }
@@ -138,8 +75,8 @@ ColumnLayout {
         spacing: Style.marginS
 
         NLabel {
-            label: root.t("settings.max-visible") + ": " + root.valueMaxVisible
-            description: root.t("settings.max-visible-desc")
+            label: (pluginApi?.tr("settings.max-visible") ?? "Max visible columns") + ": " + root.valueMaxVisible
+            description: pluginApi?.tr("settings.max-visible-desc") ?? "Maximum number of columns visible on screen at once"
         }
 
         NSlider {
@@ -162,8 +99,8 @@ ColumnLayout {
         spacing: Style.marginS
 
         NLabel {
-            label: root.t("settings.debounce") + ": " + root.valueDebounceMs + "ms"
-            description: root.t("settings.debounce-desc")
+            label: (pluginApi?.tr("settings.debounce") ?? "Debounce delay") + ": " + root.valueDebounceMs + "ms"
+            description: pluginApi?.tr("settings.debounce-desc") ?? "Delay before redistribution to coalesce rapid events"
         }
 
         NSlider {
@@ -186,8 +123,8 @@ ColumnLayout {
         spacing: Style.marginS
 
         NLabel {
-            label: root.t("settings.rate-limit") + ": " + root.valueMaxEventsPerSecond + "/s"
-            description: root.t("settings.rate-limit-desc")
+            label: (pluginApi?.tr("settings.rate-limit") ?? "Rate limit") + ": " + root.valueMaxEventsPerSecond + "/s"
+            description: pluginApi?.tr("settings.rate-limit-desc") ?? "Maximum events processed per second"
         }
 
         NSlider {
@@ -225,9 +162,9 @@ ColumnLayout {
         NText {
             text: {
                 const status = pluginApi?.mainInstance?.status ?? "stopped";
-                if (status === "running") return root.t("settings.status-running");
-                if (status === "error") return root.t("settings.status-error");
-                return root.t("settings.status-stopped");
+                if (status === "running") return pluginApi?.tr("settings.status-running") ?? "Daemon running";
+                if (status === "error") return pluginApi?.tr("settings.status-error") ?? "Daemon error — restarting...";
+                return pluginApi?.tr("settings.status-stopped") ?? "Daemon stopped";
             }
             Layout.fillWidth: true
         }
@@ -240,18 +177,18 @@ ColumnLayout {
         spacing: 4
 
         NText {
-            text: root.t("settings.about-title")
+            text: pluginApi?.tr("settings.about-title") ?? "About"
             font.bold: true
         }
 
         NText {
-            text: root.t("settings.about-credit")
+            text: pluginApi?.tr("settings.about-credit") ?? "Developed by Pir0c0pter0 using Claude"
             opacity: 0.7
             font.pixelSize: 12
         }
 
         NText {
-            text: root.t("settings.about-date") + ": 2026-02-19"
+            text: (pluginApi?.tr("settings.about-date") ?? "Date") + ": 2026-02-19"
             opacity: 0.5
             font.pixelSize: 11
         }
