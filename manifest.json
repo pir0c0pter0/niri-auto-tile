@@ -1,7 +1,7 @@
 {
   "id": "niri-auto-tile",
   "name": "Auto-Tile",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "minNoctaliaVersion": "4.4.0",
   "author": "pir0c0pter0",
   "license": "MIT",
@@ -21,7 +21,6 @@
   },
 
   "metadata": {
-    "commandPrefix": "auto-tile",
     "defaultSettings": {
       "maxVisible": 4,
       "debounceMs": 300,

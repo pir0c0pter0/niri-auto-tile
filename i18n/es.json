@@ -1,14 +1,15 @@
 {
   "panel": {
-    "title": "Disposición de columnas",
+    "title": "Disposicion de columnas",
     "single": "Una",
-    "columns": "%1 Columnas",
-    "status-active": "Activo — %1 columnas",
+    "columns": "{count} Columnas",
+    "status-active": "Activo — {count} columnas",
+    "status-active-ws": "Activo — {count} columnas (WS {ws})",
     "status-starting": "Iniciando...",
     "status-disabled": "Desactivado"
   },
   "bar": {
-    "running": "Auto-Tile: ejecutando (%1 columnas)",
+    "running": "Auto-Tile: ejecutando ({count} columnas)",
     "starting": "Auto-Tile: iniciando...",
     "disabled": "Auto-Tile: desactivado",
     "enable": "Activar Auto-Tile",
@@ -17,22 +18,22 @@
   },
   "settings": {
     "enabled": "Activar Auto-Tile",
-    "enabled-desc": "Redistribuir automáticamente los anchos de columna al abrir o cerrar ventanas",
+    "enabled-desc": "Redistribuir automaticamente los anchos de columna al abrir o cerrar ventanas",
     "per-workspace": "Por espacio de trabajo",
-    "per-workspace-desc": "Cada espacio de trabajo tiene su propia configuración de columnas",
-    "only-at-max": "Solo al máximo",
-    "only-at-max-desc": "Redistribuir solo cuando el número de columnas alcance el máximo",
-    "max-visible": "Columnas visibles",
-    "max-visible-desc": "Número máximo de columnas visibles en pantalla simultáneamente",
-    "debounce": "Retardo de debounce",
-    "debounce-desc": "Retardo antes de redistribuir para agrupar eventos rápidos",
-    "rate-limit": "Límite de eventos",
-    "rate-limit-desc": "Máximo de eventos procesados por segundo",
-    "status-running": "Daemon en ejecución",
+    "per-workspace-desc": "Cada espacio de trabajo tiene su propia configuracion de columnas",
+    "only-at-max": "Solo al maximo",
+    "only-at-max-desc": "Redistribuir solo cuando el numero de columnas alcance el maximo",
+    "max-visible": "Columnas visibles: {value}",
+    "max-visible-desc": "Numero maximo de columnas visibles en pantalla simultaneamente",
+    "debounce": "Retardo de debounce: {value}ms",
+    "debounce-desc": "Retardo antes de redistribuir para agrupar eventos rapidos",
+    "rate-limit": "Limite de eventos: {value}/s",
+    "rate-limit-desc": "Maximo de eventos procesados por segundo",
+    "status-running": "Daemon en ejecucion",
     "status-error": "Error del daemon — reiniciando...",
     "status-stopped": "Daemon detenido",
     "about-title": "Acerca de",
     "about-credit": "Desarrollado por Pir0c0pter0 usando Claude",
-    "about-date": "Fecha"
+    "about-date": "Fecha: {date}"
   }
 }

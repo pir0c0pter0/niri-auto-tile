@@ -2,13 +2,14 @@
   "panel": {
     "title": "Disposizione colonne",
     "single": "Singola",
-    "columns": "%1 Colonne",
-    "status-active": "Attivo — %1 colonne",
+    "columns": "{count} Colonne",
+    "status-active": "Attivo — {count} colonne",
+    "status-active-ws": "Attivo — {count} colonne (WS {ws})",
     "status-starting": "Avvio...",
     "status-disabled": "Disattivato"
   },
   "bar": {
-    "running": "Auto-Tile: in esecuzione (%1 colonne)",
+    "running": "Auto-Tile: in esecuzione ({count} colonne)",
     "starting": "Auto-Tile: avvio...",
     "disabled": "Auto-Tile: disattivato",
     "enable": "Attiva Auto-Tile",
@@ -22,17 +23,17 @@
     "per-workspace-desc": "Ogni spazio di lavoro ha la propria impostazione delle colonne",
     "only-at-max": "Solo al massimo",
     "only-at-max-desc": "Ridistribuisci solo quando il numero di colonne raggiunge il massimo",
-    "max-visible": "Colonne visibili",
+    "max-visible": "Colonne visibili: {value}",
     "max-visible-desc": "Numero massimo di colonne visibili contemporaneamente sullo schermo",
-    "debounce": "Ritardo di debounce",
+    "debounce": "Ritardo di debounce: {value}ms",
     "debounce-desc": "Ritardo prima della ridistribuzione per raggruppare eventi rapidi",
-    "rate-limit": "Limite di eventi",
+    "rate-limit": "Limite di eventi: {value}/s",
     "rate-limit-desc": "Numero massimo di eventi elaborati al secondo",
     "status-running": "Daemon in esecuzione",
     "status-error": "Errore del daemon — riavvio...",
     "status-stopped": "Daemon fermato",
     "about-title": "Informazioni",
     "about-credit": "Sviluppato da Pir0c0pter0 con Claude",
-    "about-date": "Data"
+    "about-date": "Data: {date}"
   }
 }
