@@ -156,13 +156,10 @@ def _get_windows() -> list[dict]:
         return []
 
 
-def get_columns_with_windows(workspace_id: int, windows: list[dict] | None = None) -> dict[int, int]:
-    """Get a mapping of column_index -> window_id for tiling columns in a workspace.
-
-    Returns one representative window ID per column, sorted by column index.
-    """
-    cols: dict[int, int] = {}
-    for w in (windows or _get_windows()):
+def count_columns(workspace_id: int) -> int:
+    """Count unique tiling columns in the given workspace."""
+    cols: set[int] = set()
+    for w in _get_windows():
         if w.get("workspace_id") != workspace_id:
             continue
         if w.get("is_floating", False):
@@ -173,15 +170,9 @@ def get_columns_with_windows(workspace_id: int, windows: list[dict] | None = Non
         pos = layout.get("pos_in_scrolling_layout")
         if isinstance(pos, (list, tuple)) and len(pos) > 0:
             col_idx = _valid_id(pos[0])
-            win_id = _valid_id(w.get("id"))
-            if col_idx is not None and win_id is not None and col_idx not in cols:
-                cols[col_idx] = win_id
-    return dict(sorted(cols.items()))
-
-
-def count_columns(workspace_id: int) -> int:
-    """Count unique tiling columns in the given workspace."""
-    return len(get_columns_with_windows(workspace_id))
+            if col_idx is not None:
+                cols.add(col_idx)
+    return len(cols)
 
 
 def get_all_window_ids() -> set[int]:
@@ -202,17 +193,15 @@ def get_active_workspaces() -> set[int]:
     return ws_ids
 
 
-def _redistribute_workspace(ws_id: int, focused_id: int | None) -> bool:
+def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
     """Redistribute columns on a single workspace.
 
     Only redistributes when col_count >= max_visible. Below that threshold,
     niri's default layout is preserved.
-
-    Returns True if the screen is full (col_count >= max_visible).
     """
     col_count = count_columns(ws_id)
     if col_count == 0:
-        return False
+        return
 
     # Safety cap
     if col_count > MAX_COLUMNS:
@@ -220,86 +209,61 @@ def _redistribute_workspace(ws_id: int, focused_id: int | None) -> bool:
         col_count = MAX_COLUMNS
 
     max_vis = get_max_visible(ws_id)
-    screen_full = col_count >= max_vis
 
     # Thread-safe check: skip if state unchanged for this workspace
     cache_key = (col_count, max_vis)
     with _lock:
-        prev_key = _prev_col_counts.get(ws_id)
-        if prev_key == cache_key:
-            return screen_full
+        if _prev_col_counts.get(ws_id) == cache_key:
+            return
         _prev_col_counts[ws_id] = cache_key
-
-    prev_col_count = prev_key[0] if prev_key else 0
-    adding_columns = col_count > prev_col_count
 
     # Below max_visible: keep niri default layout if onlyAtMax is set
     if ONLY_AT_MAX and col_count < max_vis:
         log.info("ws=%d: %d cols < max=%d, keeping default layout", ws_id, col_count, max_vis)
-        return False
+        return
 
-    # At or above max_visible: redistribute evenly
+    # At or above max_visible: redistribute evenly and center
     visible = min(col_count, max_vis)
     base_pct = 100 // visible
     remainder = 100 - (base_pct * visible)
     log.info("ws=%d: %d cols, max=%d -> %d%% each (+%d%% last)", ws_id, col_count, max_vis, base_pct, remainder)
 
-    # Get one window ID per column (sorted by column index)
+    # Focus a window on this workspace to operate on it
     windows = _get_windows()
-    col_windows = get_columns_with_windows(ws_id, windows)
-    col_indices = list(col_windows.keys())
+    ws_window_id = None
+    for w in windows:
+        if w.get("workspace_id") == ws_id and not w.get("is_floating", False):
+            ws_window_id = _valid_id(w.get("id"))
+            if ws_window_id is not None:
+                break
 
-    if not col_indices:
-        return screen_full
+    if ws_window_id is not None:
+        niri_action("focus-window", "--id", str(ws_window_id))
 
-    if screen_full:
-        # Screen full: direction depends on whether columns were added or removed.
-        # Adding: left→right (anchors left edge first, new columns appear on right)
-        # Removing: right→left (right columns shrink, left edge stays fixed)
-        if adding_columns:
-            order = range(len(col_indices))
-        else:
-            order = range(len(col_indices) - 1, -1, -1)
+    # Walk columns and set widths
+    niri_action("focus-column-first")
+    for i in range(col_count):
+        pct = f"{base_pct + remainder}%" if i == col_count - 1 and remainder > 0 else f"{base_pct}%"
+        niri_action("set-column-width", pct)
+        if i < col_count - 1:
+            niri_action("focus-column-right")
 
-        for i in order:
-            col_idx = col_indices[i]
-            win_id = col_windows[col_idx]
-            pct = f"{base_pct + remainder}%" if i == len(col_indices) - 1 and remainder > 0 else f"{base_pct}%"
-            niri_action("focus-window", "--id", str(win_id))
-            niri_action("set-column-width", pct)
-    else:
-        # Screen not full: use walk approach + center at the end
-        first_win = col_windows[col_indices[0]]
-        niri_action("focus-window", "--id", str(first_win))
-        niri_action("focus-column-first")
-        for i in range(col_count):
-            pct = f"{base_pct + remainder}%" if i == col_count - 1 and remainder > 0 else f"{base_pct}%"
-            niri_action("set-column-width", pct)
-            if i < col_count - 1:
-                niri_action("focus-column-right")
-        niri_action("focus-column-first")
-        niri_action("center-visible-columns")
-
-    return screen_full
+    # Center all visible columns on screen
+    niri_action("focus-column-first")
+    niri_action("center-visible-columns")
 
 
 def redistribute() -> None:
     """Redistribute all active workspaces, restoring original focus afterwards."""
     original_ws, original_focused = get_focused_workspace()
 
-    # Track whether the original workspace has a full screen
-    ws_full: dict[int, bool] = {}
     for active_ws in get_active_workspaces():
-        ws_full[active_ws] = _redistribute_workspace(active_ws, None)
+        _redistribute_workspace(active_ws, None)
 
     # Restore focus to the original window/workspace
-    # Only center if the workspace is not full (left edge stays fixed when full)
-    should_center = not ws_full.get(original_ws, False) if original_ws is not None else True
-
     if original_focused is not None:
         niri_action("focus-window", "--id", str(original_focused))
-        if should_center:
-            niri_action("center-visible-columns")
+        niri_action("center-visible-columns")
     elif original_ws is not None:
         # No focused window (e.g. panel open) — focus any window on original workspace
         for w in _get_windows():
@@ -307,8 +271,7 @@ def redistribute() -> None:
                 win_id = _valid_id(w.get("id"))
                 if win_id is not None:
                     niri_action("focus-window", "--id", str(win_id))
-                    if should_center:
-                        niri_action("center-visible-columns")
+                    niri_action("center-visible-columns")
                     break
 
 
