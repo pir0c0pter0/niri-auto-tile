@@ -191,15 +191,17 @@ def get_active_workspaces() -> set[int]:
     return ws_ids
 
 
-def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
+def _redistribute_workspace(ws_id: int, focused_id: int | None) -> bool:
     """Redistribute columns on a single workspace.
 
     Only redistributes when col_count >= max_visible. Below that threshold,
     niri's default layout is preserved.
+
+    Returns True if the screen is full (col_count >= max_visible).
     """
     col_count = count_columns(ws_id)
     if col_count == 0:
-        return
+        return False
 
     # Safety cap
     if col_count > MAX_COLUMNS:
@@ -207,20 +209,21 @@ def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
         col_count = MAX_COLUMNS
 
     max_vis = get_max_visible(ws_id)
+    screen_full = col_count >= max_vis
 
     # Thread-safe check: skip if state unchanged for this workspace
     cache_key = (col_count, max_vis)
     with _lock:
         if _prev_col_counts.get(ws_id) == cache_key:
-            return
+            return screen_full
         _prev_col_counts[ws_id] = cache_key
 
     # Below max_visible: keep niri default layout if onlyAtMax is set
     if ONLY_AT_MAX and col_count < max_vis:
         log.info("ws=%d: %d cols < max=%d, keeping default layout", ws_id, col_count, max_vis)
-        return
+        return False
 
-    # At or above max_visible: redistribute evenly and center
+    # At or above max_visible: redistribute evenly
     visible = min(col_count, max_vis)
     base_pct = 100 // visible
     remainder = 100 - (base_pct * visible)
@@ -246,22 +249,31 @@ def _redistribute_workspace(ws_id: int, focused_id: int | None) -> None:
         if i < col_count - 1:
             niri_action("focus-column-right")
 
-    # Center all visible columns on screen
-    niri_action("focus-column-first")
-    niri_action("center-visible-columns")
+    # Only center when columns don't fill the screen (left edge stays fixed when full)
+    if not screen_full:
+        niri_action("focus-column-first")
+        niri_action("center-visible-columns")
+
+    return screen_full
 
 
 def redistribute() -> None:
     """Redistribute all active workspaces, restoring original focus afterwards."""
     original_ws, original_focused = get_focused_workspace()
 
+    # Track whether the original workspace has a full screen
+    ws_full: dict[int, bool] = {}
     for active_ws in get_active_workspaces():
-        _redistribute_workspace(active_ws, None)
+        ws_full[active_ws] = _redistribute_workspace(active_ws, None)
 
     # Restore focus to the original window/workspace
+    # Only center if the workspace is not full (left edge stays fixed when full)
+    should_center = not ws_full.get(original_ws, False) if original_ws is not None else True
+
     if original_focused is not None:
         niri_action("focus-window", "--id", str(original_focused))
-        niri_action("center-visible-columns")
+        if should_center:
+            niri_action("center-visible-columns")
     elif original_ws is not None:
         # No focused window (e.g. panel open) — focus any window on original workspace
         for w in _get_windows():
@@ -269,7 +281,8 @@ def redistribute() -> None:
                 win_id = _valid_id(w.get("id"))
                 if win_id is not None:
                     niri_action("focus-window", "--id", str(win_id))
-                    niri_action("center-visible-columns")
+                    if should_center:
+                        niri_action("center-visible-columns")
                     break
 
 
