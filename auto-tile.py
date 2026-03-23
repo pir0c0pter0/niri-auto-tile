@@ -10,6 +10,7 @@ Supports per-workspace max-visible settings via --workspace-config.
 import argparse
 import json
 import logging
+import os
 import signal
 import subprocess
 import threading
@@ -25,6 +26,7 @@ MAX_EVENTS_PER_SECOND = 20
 PER_WORKSPACE = False
 WORKSPACE_MAX_VISIBLE: dict[int, int] = {}
 ONLY_AT_MAX = True
+CONFIG_FILE: str = ""
 
 # ─── Logging ───
 logging.basicConfig(
@@ -154,10 +156,13 @@ def _get_windows() -> list[dict]:
         return []
 
 
-def count_columns(workspace_id: int) -> int:
-    """Count unique tiling columns in the given workspace."""
-    cols: set[int] = set()
-    for w in _get_windows():
+def get_columns_with_windows(workspace_id: int, windows: list[dict] | None = None) -> dict[int, int]:
+    """Get a mapping of column_index -> window_id for tiling columns in a workspace.
+
+    Returns one representative window ID per column, sorted by column index.
+    """
+    cols: dict[int, int] = {}
+    for w in (windows or _get_windows()):
         if w.get("workspace_id") != workspace_id:
             continue
         if w.get("is_floating", False):
@@ -168,9 +173,15 @@ def count_columns(workspace_id: int) -> int:
         pos = layout.get("pos_in_scrolling_layout")
         if isinstance(pos, (list, tuple)) and len(pos) > 0:
             col_idx = _valid_id(pos[0])
-            if col_idx is not None:
-                cols.add(col_idx)
-    return len(cols)
+            win_id = _valid_id(w.get("id"))
+            if col_idx is not None and win_id is not None and col_idx not in cols:
+                cols[col_idx] = win_id
+    return dict(sorted(cols.items()))
+
+
+def count_columns(workspace_id: int) -> int:
+    """Count unique tiling columns in the given workspace."""
+    return len(get_columns_with_windows(workspace_id))
 
 
 def get_all_window_ids() -> set[int]:
@@ -214,9 +225,13 @@ def _redistribute_workspace(ws_id: int, focused_id: int | None) -> bool:
     # Thread-safe check: skip if state unchanged for this workspace
     cache_key = (col_count, max_vis)
     with _lock:
-        if _prev_col_counts.get(ws_id) == cache_key:
+        prev_key = _prev_col_counts.get(ws_id)
+        if prev_key == cache_key:
             return screen_full
         _prev_col_counts[ws_id] = cache_key
+
+    prev_col_count = prev_key[0] if prev_key else 0
+    adding_columns = col_count > prev_col_count
 
     # Below max_visible: keep niri default layout if onlyAtMax is set
     if ONLY_AT_MAX and col_count < max_vis:
@@ -229,28 +244,39 @@ def _redistribute_workspace(ws_id: int, focused_id: int | None) -> bool:
     remainder = 100 - (base_pct * visible)
     log.info("ws=%d: %d cols, max=%d -> %d%% each (+%d%% last)", ws_id, col_count, max_vis, base_pct, remainder)
 
-    # Focus a window on this workspace to operate on it
+    # Get one window ID per column (sorted by column index)
     windows = _get_windows()
-    ws_window_id = None
-    for w in windows:
-        if w.get("workspace_id") == ws_id and not w.get("is_floating", False):
-            ws_window_id = _valid_id(w.get("id"))
-            if ws_window_id is not None:
-                break
+    col_windows = get_columns_with_windows(ws_id, windows)
+    col_indices = list(col_windows.keys())
 
-    if ws_window_id is not None:
-        niri_action("focus-window", "--id", str(ws_window_id))
+    if not col_indices:
+        return screen_full
 
-    # Walk columns and set widths
-    niri_action("focus-column-first")
-    for i in range(col_count):
-        pct = f"{base_pct + remainder}%" if i == col_count - 1 and remainder > 0 else f"{base_pct}%"
-        niri_action("set-column-width", pct)
-        if i < col_count - 1:
-            niri_action("focus-column-right")
+    if screen_full:
+        # Screen full: direction depends on whether columns were added or removed.
+        # Adding: left→right (anchors left edge first, new columns appear on right)
+        # Removing: right→left (right columns shrink, left edge stays fixed)
+        if adding_columns:
+            order = range(len(col_indices))
+        else:
+            order = range(len(col_indices) - 1, -1, -1)
 
-    # Only center when columns don't fill the screen (left edge stays fixed when full)
-    if not screen_full:
+        for i in order:
+            col_idx = col_indices[i]
+            win_id = col_windows[col_idx]
+            pct = f"{base_pct + remainder}%" if i == len(col_indices) - 1 and remainder > 0 else f"{base_pct}%"
+            niri_action("focus-window", "--id", str(win_id))
+            niri_action("set-column-width", pct)
+    else:
+        # Screen not full: use walk approach + center at the end
+        first_win = col_windows[col_indices[0]]
+        niri_action("focus-window", "--id", str(first_win))
+        niri_action("focus-column-first")
+        for i in range(col_count):
+            pct = f"{base_pct + remainder}%" if i == col_count - 1 and remainder > 0 else f"{base_pct}%"
+            niri_action("set-column-width", pct)
+            if i < col_count - 1:
+                niri_action("focus-column-right")
         niri_action("focus-column-first")
         niri_action("center-visible-columns")
 
@@ -439,17 +465,64 @@ def parse_args() -> argparse.Namespace:
         help='JSON map of workspace_id -> maxVisible, e.g. \'{"3":2,"1":4}\'',
     )
     parser.add_argument(
+        "--config-file", type=str, default=None,
+        help="path to runtime config file for hot-reload via SIGUSR1",
+    )
+    parser.add_argument(
         "--debug", action="store_true",
         help="enable debug logging",
     )
     return parser.parse_args()
 
 
+# ─── Hot Reload ───
+def reload_config() -> None:
+    """Reload configuration from CONFIG_FILE and trigger redistribution."""
+    global MAX_VISIBLE, PER_WORKSPACE, WORKSPACE_MAX_VISIBLE, ONLY_AT_MAX
+
+    if not CONFIG_FILE or not os.path.isfile(CONFIG_FILE):
+        log.warning("no config file to reload")
+        return
+
+    try:
+        with open(CONFIG_FILE) as f:
+            cfg = json.load(f)
+    except (OSError, json.JSONDecodeError) as exc:
+        log.warning("failed to read config file: %s", exc)
+        return
+
+    if not isinstance(cfg, dict):
+        return
+
+    old_max = MAX_VISIBLE
+    if "maxVisible" in cfg:
+        MAX_VISIBLE = max(1, int(cfg["maxVisible"]))
+    if "onlyAtMax" in cfg:
+        ONLY_AT_MAX = bool(cfg["onlyAtMax"])
+    if "perWorkspace" in cfg:
+        PER_WORKSPACE = bool(cfg["perWorkspace"])
+    if "workspaceMaxVisible" in cfg:
+        raw = cfg["workspaceMaxVisible"]
+        if isinstance(raw, dict):
+            WORKSPACE_MAX_VISIBLE = {
+                int(k): max(1, int(v))
+                for k, v in raw.items()
+                if str(k).isdigit() and str(v).isdigit()
+            }
+
+    log.info("config reloaded (max_visible=%d)", MAX_VISIBLE)
+
+    # Clear cached state so redistribution runs with new config
+    with _lock:
+        _prev_col_counts.clear()
+    redistribute()
+
+
 # ─── Main ───
 def main() -> None:
     """Main entry point with reconnection loop."""
     global MAX_VISIBLE, DEBOUNCE_SECONDS, MAX_EVENTS_PER_SECOND
-    global PER_WORKSPACE, WORKSPACE_MAX_VISIBLE, ONLY_AT_MAX
+    global PER_WORKSPACE, WORKSPACE_MAX_VISIBLE, ONLY_AT_MAX, CONFIG_FILE
 
     args = parse_args()
 
@@ -475,6 +548,8 @@ def main() -> None:
                 }
         except (json.JSONDecodeError, ValueError) as exc:
             log.warning("invalid --workspace-config: %s", exc)
+    if args.config_file:
+        CONFIG_FILE = args.config_file
     if args.debug:
         logging.getLogger().setLevel(logging.DEBUG)
 
@@ -486,6 +561,11 @@ def main() -> None:
             t.cancel()
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, _shutdown)
+
+    # Handle SIGUSR1 for hot config reload (no restart needed)
+    def _reload(signum, frame):
+        reload_config()
+    signal.signal(signal.SIGUSR1, _reload)
 
     mode = "per-workspace" if PER_WORKSPACE else "global"
     ws_cfg = f", ws_config={WORKSPACE_MAX_VISIBLE}" if WORKSPACE_MAX_VISIBLE else ""

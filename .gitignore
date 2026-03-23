@@ -4,3 +4,4 @@ __pycache__/
 .env
 *.log
 settings.json
+runtime-config.json
