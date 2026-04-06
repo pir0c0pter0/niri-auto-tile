@@ -192,7 +192,7 @@ Item {
             onStreamFinished: {
                 const msg = text.trim();
                 if (msg) {
-                    console.warn("[auto-tile]", msg);
+                    Logger.w("[auto-tile]", msg);
                 }
             }
         }
