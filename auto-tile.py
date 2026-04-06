@@ -285,13 +285,48 @@ def _redistribute_incremental_open(ws_id: int, new_window_id: int) -> None:
     niri_action("center-visible-columns")
 
 
-def _redistribute_incremental_close(ws_id: int) -> None:
-    """Handle window close: do nothing, let niri handle layout naturally."""
+def _redistribute_incremental_close(ws_id: int, original_focused: int | None) -> None:
+    """Handle window close: let niri reposition, then center if needed.
+
+    When remaining columns >= max_visible, waits for niri to settle and
+    then centers visible columns around the focused window.
+    """
     col_count = count_columns(ws_id)
     max_vis = get_max_visible(ws_id)
     with _lock:
         _prev_col_counts[ws_id] = (col_count, max_vis)
-    log.info("ws=%d: close event, %d cols remaining — niri handles it", ws_id, col_count)
+
+    if col_count >= max_vis:
+        # Wait for niri to finish repositioning
+        time.sleep(0.15)
+        # Find the focused window's column, then focus max_vis columns back
+        # to bring the leftmost needed column into view
+        windows = _get_windows()
+        col_map = _build_column_map(windows, ws_id)
+        sorted_cols = sorted(col_map.keys())
+
+        # Find focused window's column index
+        focused_col_pos = len(sorted_cols) - 1  # default to last
+        if original_focused is not None:
+            for col_idx, win_ids in col_map.items():
+                if original_focused in win_ids:
+                    focused_col_pos = sorted_cols.index(col_idx)
+                    break
+
+        # The leftmost column that should be visible
+        leftmost_pos = max(0, focused_col_pos - max_vis + 1)
+        leftmost_col_idx = sorted_cols[leftmost_pos]
+        leftmost_win_id = col_map[leftmost_col_idx][0]
+
+        # Focus the leftmost column to bring it into view
+        niri_action("focus-window", "--id", str(leftmost_win_id))
+        niri_action("center-visible-columns")
+        # Restore original focus
+        if original_focused is not None:
+            niri_action("focus-window", "--id", str(original_focused))
+        log.info("ws=%d: close event, %d cols >= max=%d — pulled columns to fill viewport", ws_id, col_count, max_vis)
+    else:
+        log.info("ws=%d: close event, %d cols < max=%d — niri handles it", ws_id, col_count, max_vis)
 
 
 def _redistribute_full(ws_id: int, col_map: dict[int, list[int]] | None = None,
@@ -354,7 +389,7 @@ def _redistribute_workspace(ws_id: int, focused_id: int | None,
     if event_type == "open" and event_window_id is not None:
         _redistribute_incremental_open(ws_id, event_window_id)
     elif event_type == "close":
-        _redistribute_incremental_close(ws_id)
+        _redistribute_incremental_close(ws_id, focused_id)
     else:
         _redistribute_full(ws_id)
 
