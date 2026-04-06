@@ -337,7 +337,8 @@ def _redistribute_incremental_close(ws_id: int, original_focused: int | None) ->
 
 
 def _redistribute_full(ws_id: int, col_map: dict[int, list[int]] | None = None,
-                       col_count: int | None = None, max_vis: int | None = None) -> None:
+                       col_count: int | None = None, max_vis: int | None = None,
+                       force: bool = False) -> None:
     """Full redistribute using direct window ID focus (no focus-column-first walk).
 
     Used as fallback and for close events. Much less disruptive than the old
@@ -370,15 +371,18 @@ def _redistribute_full(ws_id: int, col_map: dict[int, list[int]] | None = None,
                 return
             _prev_col_counts[ws_id] = cache_key
 
-    if ONLY_AT_MAX and col_count < max_vis:
+    if not force and ONLY_AT_MAX and col_count < max_vis:
         log.info("ws=%d: %d cols < max=%d, keeping default layout", ws_id, col_count, max_vis)
         return
 
-    base_pct, remainder = _calc_widths(col_count, max_vis)
+    # When forced (config change), size columns based on max_vis even if fewer columns exist
+    width_base = max_vis if force else min(col_count, max_vis)
+    base_pct = 100 // width_base
+    remainder = 100 - (base_pct * width_base)
     sorted_cols = sorted(col_map.keys())
 
-    log.info("ws=%d: %d cols, max=%d -> %d%% each (+%d%% last) [direct ID]",
-             ws_id, col_count, max_vis, base_pct, remainder)
+    log.info("ws=%d: %d cols, max=%d -> %d%% each (base=%d) [direct ID]",
+             ws_id, col_count, max_vis, base_pct, width_base)
 
     # Set each column width by focusing a window in it directly (no walking)
     for i, col_idx in enumerate(sorted_cols):
@@ -657,10 +661,15 @@ def reload_config() -> None:
 
     log.info("config reloaded (max_visible=%d)", MAX_VISIBLE)
 
-    # Clear cached state so redistribution runs with new config
+    # Clear cached state and force redistribute (ignore ONLY_AT_MAX)
     with _lock:
         _prev_col_counts.clear()
-    redistribute()
+    original_ws, original_focused = get_focused_workspace()
+    for active_ws in get_active_workspaces():
+        _redistribute_full(active_ws, force=True)
+    if original_focused is not None:
+        niri_action("focus-window", "--id", str(original_focused))
+        niri_action("center-visible-columns")
 
 
 # ─── Main ───
