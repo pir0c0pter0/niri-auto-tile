@@ -260,10 +260,16 @@ def _redistribute_incremental_open(ws_id: int, new_window_id: int) -> None:
         log.info("ws=%d: %d cols < max=%d, keeping default layout (open)", ws_id, col_count, max_vis)
         return
 
+    # At threshold (col_count == max_vis): full redistribute to set all columns
+    if col_count == max_vis:
+        log.info("ws=%d: reached max_visible=%d, full redistribute", ws_id, max_vis)
+        _redistribute_full(ws_id, col_map, col_count, max_vis)
+        return
+
+    # Above threshold: only set the new column's width (incremental)
     base_pct, remainder = _calc_widths(col_count, max_vis)
     sorted_cols = sorted(col_map.keys())
 
-    # Find which column the new window is in
     new_col_idx = None
     for col_idx, win_ids in col_map.items():
         if new_window_id in win_ids:
@@ -271,7 +277,6 @@ def _redistribute_incremental_open(ws_id: int, new_window_id: int) -> None:
             break
 
     if new_col_idx is None:
-        # New window not found in column map (maybe floating?) — full fallback
         log.debug("ws=%d: new window %d not in column map, full redistribute", ws_id, new_window_id)
         _redistribute_full(ws_id, col_map, col_count, max_vis)
         return
@@ -280,7 +285,6 @@ def _redistribute_incremental_open(ws_id: int, new_window_id: int) -> None:
     pct = f"{base_pct + remainder}%" if i == len(sorted_cols) - 1 and remainder > 0 else f"{base_pct}%"
     log.info("ws=%d: open window %d at col %d, setting %s (incremental)", ws_id, new_window_id, i, pct)
 
-    # Set width of the new column only
     _set_column_width_by_id(new_window_id, pct)
     niri_action("center-visible-columns")
 
@@ -326,7 +330,10 @@ def _redistribute_incremental_close(ws_id: int, original_focused: int | None) ->
             niri_action("focus-window", "--id", str(original_focused))
         log.info("ws=%d: close event, %d cols >= max=%d — pulled columns to fill viewport", ws_id, col_count, max_vis)
     else:
-        log.info("ws=%d: close event, %d cols < max=%d — niri handles it", ws_id, col_count, max_vis)
+        # Fewer than max_visible: center remaining columns on screen
+        time.sleep(0.15)
+        niri_action("center-visible-columns")
+        log.info("ws=%d: close event, %d cols < max=%d — centered remaining", ws_id, col_count, max_vis)
 
 
 def _redistribute_full(ws_id: int, col_map: dict[int, list[int]] | None = None,
