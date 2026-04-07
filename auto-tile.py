@@ -25,7 +25,7 @@ RECONNECT_DELAY = 2.0
 MAX_EVENTS_PER_SECOND = 20
 PER_WORKSPACE = False
 WORKSPACE_MAX_VISIBLE: dict[int, int] = {}
-ONLY_AT_MAX = True
+ONLY_AT_MAX = False
 CONFIG_FILE: str = ""
 
 # ─── Logging ───
