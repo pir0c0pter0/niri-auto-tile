@@ -5,7 +5,7 @@
   "minNoctaliaVersion": "4.4.0",
   "author": "pir0c0pter0",
   "license": "MIT",
-  "repository": "https://github.com/pir0c0pter0/niri-auto-tile",
+  "repository": "https://github.com/noctalia-dev/noctalia-plugins",
   "description": "Automatically redistributes niri column widths evenly when windows open or close",
   "tags": ["Bar", "Utility", "System", "Niri"],
 
