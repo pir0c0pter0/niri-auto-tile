@@ -264,6 +264,13 @@ def _redistribute_incremental_open(ws_id: int, new_window_id: int) -> None:
     if col_count <= max_vis:
         log.info("ws=%d: %d cols <= max=%d, full redistribute (open)", ws_id, col_count, max_vis)
         _redistribute_full(ws_id, col_map, col_count, max_vis)
+        time.sleep(0.1)
+        # Focus first column so viewport starts from left (all cols fit screen)
+        sorted_cols = sorted(col_map.keys())
+        niri_action("focus-window", "--id", str(col_map[sorted_cols[0]][0]))
+        niri_action("center-visible-columns")
+        # Restore focus to new window (viewport stays since all cols visible)
+        niri_action("focus-window", "--id", str(new_window_id))
         return
 
     # Above threshold: only set the new column's width (incremental)
@@ -341,9 +348,15 @@ def _redistribute_incremental_close(ws_id: int, original_focused: int | None) ->
                 with _lock:
                     _prev_col_counts[ws_id] = (actual_count, max_vis)
                 _redistribute_full(ws_id, col_map, actual_count, max_vis)
+                time.sleep(0.1)
+                # Focus first column so viewport shows all columns
+                sorted_cols = sorted(col_map.keys())
+                niri_action("focus-window", "--id", str(col_map[sorted_cols[0]][0]))
+                niri_action("center-visible-columns")
                 if original_focused is not None:
                     niri_action("focus-window", "--id", str(original_focused))
-        niri_action("center-visible-columns")
+        else:
+            niri_action("center-visible-columns")
         log.info("ws=%d: close event, %d cols < max=%d — %s",
                  ws_id, col_count, max_vis,
                  "resized and centered" if not ONLY_AT_MAX else "centered remaining")
