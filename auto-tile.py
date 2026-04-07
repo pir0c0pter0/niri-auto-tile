@@ -260,9 +260,9 @@ def _redistribute_incremental_open(ws_id: int, new_window_id: int) -> None:
         log.info("ws=%d: %d cols < max=%d, keeping default layout (open)", ws_id, col_count, max_vis)
         return
 
-    # At threshold (col_count == max_vis): full redistribute to set all columns
-    if col_count == max_vis:
-        log.info("ws=%d: reached max_visible=%d, full redistribute", ws_id, max_vis)
+    # At or below threshold: full redistribute (all columns need sizing)
+    if col_count <= max_vis:
+        log.info("ws=%d: %d cols <= max=%d, full redistribute (open)", ws_id, col_count, max_vis)
         _redistribute_full(ws_id, col_map, col_count, max_vis)
         return
 
@@ -330,10 +330,23 @@ def _redistribute_incremental_close(ws_id: int, original_focused: int | None) ->
             niri_action("focus-window", "--id", str(original_focused))
         log.info("ws=%d: close event, %d cols >= max=%d — pulled columns to fill viewport", ws_id, col_count, max_vis)
     else:
-        # Fewer than max_visible: center remaining columns on screen
+        # Fewer than max_visible
         time.sleep(0.15)
+        if not ONLY_AT_MAX:
+            # Columns were sized by daemon, resize remaining to fill screen
+            windows = _get_windows()
+            col_map = _build_column_map(windows, ws_id)
+            actual_count = len(col_map)
+            if actual_count > 0:
+                with _lock:
+                    _prev_col_counts[ws_id] = (actual_count, max_vis)
+                _redistribute_full(ws_id, col_map, actual_count, max_vis)
+                if original_focused is not None:
+                    niri_action("focus-window", "--id", str(original_focused))
         niri_action("center-visible-columns")
-        log.info("ws=%d: close event, %d cols < max=%d — centered remaining", ws_id, col_count, max_vis)
+        log.info("ws=%d: close event, %d cols < max=%d — %s",
+                 ws_id, col_count, max_vis,
+                 "resized and centered" if not ONLY_AT_MAX else "centered remaining")
 
 
 def _redistribute_full(ws_id: int, col_map: dict[int, list[int]] | None = None,
