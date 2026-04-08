@@ -521,8 +521,6 @@ def should_redistribute(event: dict) -> bool:
             win_id = closed.get("id")
             if win_id is not None:
                 with _lock:
-                    if win_id not in _known_window_ids:
-                        return False  # was floating, ignore
                     _known_window_ids.discard(win_id)
                     _pending_event = {"type": "close", "window_id": win_id}
         return True
@@ -536,10 +534,6 @@ def should_redistribute(event: dict) -> bool:
             return False
         win_id = window.get("id")
         if win_id is not None:
-            if window.get("is_floating", False):
-                with _lock:
-                    _known_window_ids.add(win_id)
-                return False
             with _lock:
                 if win_id not in _known_window_ids:
                     _known_window_ids.add(win_id)
@@ -772,4 +766,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
