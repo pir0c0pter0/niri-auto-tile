@@ -106,7 +106,6 @@ Item {
             if (action === "widget-settings") {
                 BarService.openPluginSettings(screen, pluginApi.manifest);
             } else if (action === "toggle" && mainInstance) {
-                mainInstance.setMaxVisible(isEnabled ? 0 : 4);
                 const newState = !isEnabled;
                 if (pluginApi?.pluginSettings) {
                     pluginApi.pluginSettings.enabled = newState;

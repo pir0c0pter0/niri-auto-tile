@@ -155,7 +155,7 @@ python3 auto-tile.py \
 | `RECONNECT_DELAY` | `2.0` | Delay before reconnecting after event stream drops |
 | `MAX_EVENTS_PER_SECOND` | `20` | Rate limiter threshold |
 | `PER_WORKSPACE` | `False` | Per-workspace column count settings |
-| `ONLY_AT_MAX` | `True` | Only redistribute at or above max visible |
+| `ONLY_AT_MAX` | `False` | Only redistribute at or above max visible |
 
 ### Recommended niri layout
 

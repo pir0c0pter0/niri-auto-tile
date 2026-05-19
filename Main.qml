@@ -83,7 +83,10 @@ Item {
         });
         configWriter.command = [
             "bash", "-c",
-            "echo '" + config + "' > " + configFilePath
+            "printf '%s' \"$1\" > \"$2\"",
+            "auto-tile-config-writer",
+            config,
+            configFilePath
         ];
         configWriter.running = true;
     }
@@ -168,7 +171,7 @@ Item {
             root.status = "running";
         }
 
-        onExited: (exitCode, exitStatus) => {
+        onExited: (exitCode) => {
             root.running = false;
 
             if (root.pendingRestart) {
@@ -178,7 +181,7 @@ Item {
                 return;
             }
 
-            if (exitCode === 0 || exitStatus === Process.CrashExit) {
+            if (exitCode === 0) {
                 root.status = "stopped";
             } else {
                 root.status = "error";

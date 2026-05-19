@@ -397,12 +397,15 @@ def _redistribute_full(ws_id: int, col_map: dict[int, list[int]] | None = None,
                 return
             _prev_col_counts[ws_id] = cache_key
 
-    if not force and ONLY_AT_MAX and col_count < max_vis:
-        log.info("ws=%d: %d cols < max=%d, keeping default layout", ws_id, col_count, max_vis)
-        return
-
-    # When forced (config change), size columns based on max_vis even if fewer columns exist
-    width_base = max_vis if force else min(col_count, max_vis)
+    if ONLY_AT_MAX and col_count < max_vis:
+        if not force:
+            log.info("ws=%d: %d cols < max=%d, keeping default layout", ws_id, col_count, max_vis)
+            return
+        # Config reload while only-at-max is enabled: keep the configured default
+        # width instead of expanding columns that are intentionally below max.
+        width_base = max_vis
+    else:
+        width_base = min(col_count, max_vis)
     base_pct = 100 // width_base
     remainder = 100 - (base_pct * width_base)
     sorted_cols = sorted(col_map.keys())
@@ -669,7 +672,6 @@ def reload_config() -> None:
     if not isinstance(cfg, dict):
         return
 
-    old_max = MAX_VISIBLE
     if "maxVisible" in cfg:
         MAX_VISIBLE = max(1, int(cfg["maxVisible"]))
     if "onlyAtMax" in cfg:
@@ -687,7 +689,7 @@ def reload_config() -> None:
 
     log.info("config reloaded (max_visible=%d)", MAX_VISIBLE)
 
-    # Clear cached state and force redistribute (ignore ONLY_AT_MAX)
+    # Clear cached state and force redistribution after config changes.
     with _lock:
         _prev_col_counts.clear()
     original_ws, original_focused = get_focused_workspace()

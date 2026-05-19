@@ -1,7 +1,7 @@
 {
   "id": "niri-auto-tile",
   "name": "Auto-Tile",
-  "version": "1.10.4",
+  "version": "1.10.5",
   "minNoctaliaVersion": "4.4.0",
   "author": "pir0c0pter0",
   "license": "MIT",
@@ -27,6 +27,7 @@
       "maxEventsPerSecond": 20,
       "enabled": true,
       "perWorkspace": false,
+      "onlyAtMax": false,
       "workspaceMaxVisible": {},
       "language": "auto"
     }
