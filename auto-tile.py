@@ -21,6 +21,7 @@ import time
 MAX_VISIBLE = 4
 MAX_COLUMNS = 20
 DEBOUNCE_SECONDS = 0.3
+CLOSE_DEBOUNCE_SECONDS = 0.05
 NIRI_TIMEOUT = 5
 RECONNECT_DELAY = 2.0
 MAX_EVENTS_PER_SECOND = 20
@@ -251,12 +252,14 @@ def _set_column_width_by_id(win_id: int, pct: str) -> None:
     niri_action("set-column-width", pct)
 
 
-def _anchor_and_center(col_map: dict[int, list[int]], max_vis: int) -> bool:
+def _anchor_and_center(col_map: dict[int, list[int]], max_vis: int,
+                       fills_viewport: bool) -> bool:
     """Anchor the viewport when every column fits on screen."""
     if len(col_map) > max_vis:
         return False
     niri_action("focus-column-first")
-    niri_action("center-visible-columns")
+    if not fills_viewport:
+        niri_action("center-visible-columns")
     return True
 
 
@@ -291,7 +294,7 @@ def _redistribute_incremental_open(ws_id: int, new_window_id: int) -> None:
     if col_count <= max_vis:
         log.info("ws=%d: %d cols <= max=%d, full redistribute (open)", ws_id, col_count, max_vis)
         _redistribute_full(ws_id, col_map, col_count, max_vis, anchor_visible=False)
-        _anchor_and_center(col_map, max_vis)
+        _anchor_and_center(col_map, max_vis, col_count >= max_vis or not ONLY_AT_MAX)
         # Restore focus to new window (viewport stays since all cols visible)
         niri_action("focus-window", "--id", str(new_window_id))
         return
@@ -368,7 +371,7 @@ def _redistribute_incremental_close(ws_id: int, original_focused: int | None) ->
             else:
                 sorted_cols = sorted(col_map.keys())
                 niri_action("focus-window", "--id", str(col_map[sorted_cols[0]][0]))
-            _anchor_and_center(col_map, max_vis)
+            _anchor_and_center(col_map, max_vis, actual_count >= max_vis or not ONLY_AT_MAX)
             if original_focused is not None:
                 niri_action("focus-window", "--id", str(original_focused))
         log.info("ws=%d: close event, %d cols < max=%d — %s",
@@ -433,7 +436,8 @@ def _redistribute_full(ws_id: int, col_map: dict[int, list[int]] | None = None,
         pct = f"{base_pct + remainder}%" if i == len(sorted_cols) - 1 and remainder > 0 else f"{base_pct}%"
         _set_column_width_by_id(win_id, pct)
 
-    if anchor_visible and not _anchor_and_center(col_map, max_vis):
+    if anchor_visible and not _anchor_and_center(
+            col_map, max_vis, col_count >= max_vis or not ONLY_AT_MAX):
         niri_action("center-visible-columns")
 
 
@@ -520,7 +524,12 @@ def debounced_redistribute() -> None:
         # Cancel previous timer, start new one
         if _debounce_timer is not None:
             _debounce_timer.cancel()
-        _debounce_timer = threading.Timer(DEBOUNCE_SECONDS, redistribute)
+
+        event_type = _pending_event.get("type") if _pending_event else None
+        debounce_seconds = CLOSE_DEBOUNCE_SECONDS if event_type == "close" else DEBOUNCE_SECONDS
+        log.debug("debounce event_type=%s interval=%gms",
+                  event_type or "full", debounce_seconds * 1000)
+        _debounce_timer = threading.Timer(debounce_seconds, redistribute)
         _debounce_timer.start()
 
 
@@ -768,20 +777,25 @@ def reload_config() -> None:
         if ws_id is not None:
             active_workspaces.add(ws_id)
 
+    had_overflow = False
     for active_ws in active_workspaces:
         col_map = _build_column_map(windows, active_ws)
         col_count = len(col_map)
         if col_count == 0:
             continue
         max_vis = get_max_visible(active_ws)
+        fills_viewport = col_count >= max_vis or not ONLY_AT_MAX
+        if col_count > max_vis:
+            had_overflow = True
         _redistribute_full(
             active_ws, col_map, col_count, max_vis,
             force=True, anchor_visible=False,
         )
-        _anchor_and_center(col_map, max_vis)
+        _anchor_and_center(col_map, max_vis, fills_viewport)
     if original_focused is not None:
         niri_action("focus-window", "--id", str(original_focused))
-        niri_action("center-visible-columns")
+        if had_overflow:
+            niri_action("center-visible-columns")
 
 
 # ─── Main ───
