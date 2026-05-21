@@ -23,6 +23,8 @@
     "per-workspace-desc": "Chaque espace de travail a sa propre configuration de colonnes",
     "only-at-max": "Uniquement au maximum",
     "only-at-max-desc": "Redistribuer uniquement lorsque le nombre de colonnes atteint le maximum",
+    "keep-max-width": "Conserver la largeur du maximum",
+    "keep-max-width-desc": "Conserve chaque colonne a la largeur du maximum (ex. 25% pour max 4) meme avec moins de colonnes — recentre seulement",
     "max-visible": "Colonnes visibles: {value}",
     "max-visible-desc": "Nombre maximal de colonnes visibles simultanement a l'ecran",
     "debounce": "Delai de debounce: {value}ms",

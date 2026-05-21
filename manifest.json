@@ -28,6 +28,7 @@
       "enabled": true,
       "perWorkspace": false,
       "onlyAtMax": false,
+      "keepMaxWidth": false,
       "workspaceMaxVisible": {},
       "language": "auto"
     }

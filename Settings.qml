@@ -14,6 +14,7 @@ ColumnLayout {
     property bool valueEnabled: settings.enabled ?? defaults.enabled ?? true
     property bool valuePerWorkspace: settings.perWorkspace ?? defaults.perWorkspace ?? false
     property bool valueOnlyAtMax: settings.onlyAtMax ?? defaults.onlyAtMax ?? false
+    property bool valueKeepMaxWidth: settings.keepMaxWidth ?? defaults.keepMaxWidth ?? false
     property int valueMaxVisible: settings.maxVisible ?? defaults.maxVisible ?? 4
     property int valueDebounceMs: settings.debounceMs ?? defaults.debounceMs ?? 300
     property int valueMaxEventsPerSecond: settings.maxEventsPerSecond ?? defaults.maxEventsPerSecond ?? 20
@@ -25,6 +26,7 @@ ColumnLayout {
         pluginApi.pluginSettings.enabled = root.valueEnabled;
         pluginApi.pluginSettings.perWorkspace = root.valuePerWorkspace;
         pluginApi.pluginSettings.onlyAtMax = root.valueOnlyAtMax;
+        pluginApi.pluginSettings.keepMaxWidth = root.valueKeepMaxWidth;
         pluginApi.pluginSettings.maxVisible = root.valueMaxVisible;
         pluginApi.pluginSettings.debounceMs = root.valueDebounceMs;
         pluginApi.pluginSettings.maxEventsPerSecond = root.valueMaxEventsPerSecond;
@@ -35,6 +37,7 @@ ColumnLayout {
         return {
             maxVisible: root.valueMaxVisible,
             onlyAtMax: root.valueOnlyAtMax,
+            keepMaxWidth: root.valueKeepMaxWidth,
             perWorkspace: root.valuePerWorkspace,
             workspaceMaxVisible: settings.workspaceMaxVisible ?? {},
             debounceMs: root.valueDebounceMs,
@@ -79,6 +82,25 @@ ColumnLayout {
         checked: root.valueOnlyAtMax
         onToggled: checked => {
             root.valueOnlyAtMax = checked;
+            if (checked && root.valueKeepMaxWidth) {
+                root.valueKeepMaxWidth = false;
+            }
+            root.saveSettings();
+            root.applyRuntimeConfig();
+        }
+    }
+
+    // ─── Keep Max Width ───
+    NToggle {
+        Layout.fillWidth: true
+        label: pluginApi?.tr("settings.keep-max-width")
+        description: pluginApi?.tr("settings.keep-max-width-desc")
+        checked: root.valueKeepMaxWidth
+        onToggled: checked => {
+            root.valueKeepMaxWidth = checked;
+            if (checked && root.valueOnlyAtMax) {
+                root.valueOnlyAtMax = false;
+            }
             root.saveSettings();
             root.applyRuntimeConfig();
         }

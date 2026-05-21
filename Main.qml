@@ -15,6 +15,7 @@ Item {
     readonly property int maxVisible: pluginApi?.pluginSettings?.maxVisible ?? 4
     readonly property bool perWorkspace: pluginApi?.pluginSettings?.perWorkspace ?? false
     readonly property bool onlyAtMax: pluginApi?.pluginSettings?.onlyAtMax ?? false
+    readonly property bool keepMaxWidth: pluginApi?.pluginSettings?.keepMaxWidth ?? false
     readonly property var workspaceMaxVisible: pluginApi?.pluginSettings?.workspaceMaxVisible ?? ({})
     readonly property int debounceMs: pluginApi?.pluginSettings?.debounceMs ?? 300
     readonly property int maxEventsPerSecond: pluginApi?.pluginSettings?.maxEventsPerSecond ?? 20
@@ -47,6 +48,10 @@ Item {
     }
 
     onOnlyAtMaxChanged: {
+        if (running) hotReloadConfig();
+    }
+
+    onKeepMaxWidthChanged: {
         if (running) hotReloadConfig();
     }
 
@@ -88,6 +93,7 @@ Item {
         return {
             maxVisible: cfg.maxVisible ?? maxVisible,
             onlyAtMax: cfg.onlyAtMax ?? onlyAtMax,
+            keepMaxWidth: cfg.keepMaxWidth ?? keepMaxWidth,
             perWorkspace: cfg.perWorkspace ?? perWorkspace,
             workspaceMaxVisible: cfg.workspaceMaxVisible ?? workspaceMaxVisible,
             debounceMs: cfg.debounceMs ?? debounceMs,
@@ -145,6 +151,13 @@ Item {
         if (running) hotReloadConfig({ onlyAtMax: value });
     }
 
+    function setKeepMaxWidth(value) {
+        if (!pluginApi?.pluginSettings) return;
+        pluginApi.pluginSettings.keepMaxWidth = value;
+        pluginApi.saveSettings();
+        if (running) hotReloadConfig({ keepMaxWidth: value });
+    }
+
     function getMaxVisibleForWorkspace(wsId) {
         if (perWorkspace) {
             const cfg = workspaceMaxVisible;
@@ -179,6 +192,9 @@ Item {
             ];
             if (root.onlyAtMax) {
                 args.push("--only-at-max");
+            }
+            if (root.keepMaxWidth) {
+                args.push("--keep-max-width");
             }
             if (root.perWorkspace) {
                 args.push("--per-workspace");

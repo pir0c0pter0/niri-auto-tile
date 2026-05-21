@@ -23,6 +23,8 @@
     "per-workspace-desc": "Each workspace has its own column count setting",
     "only-at-max": "Only at max",
     "only-at-max-desc": "Only redistribute when column count reaches the maximum",
+    "keep-max-width": "Keep max width",
+    "keep-max-width-desc": "Keep each column at max-visible width (e.g. 25% with max 4) even when fewer columns are open — just re-centers",
     "max-visible": "Max visible columns: {value}",
     "max-visible-desc": "Maximum number of columns visible on screen at once",
     "debounce": "Debounce delay: {value}ms",
