@@ -21,8 +21,6 @@
     "enabled-desc": "Ridistribuisci automaticamente le larghezze delle colonne all'apertura o chiusura delle finestre",
     "per-workspace": "Per spazio di lavoro",
     "per-workspace-desc": "Ogni spazio di lavoro ha la propria impostazione delle colonne",
-    "only-at-max": "Solo al massimo",
-    "only-at-max-desc": "Ridistribuisci solo quando il numero di colonne raggiunge il massimo",
     "keep-max-width": "Mantieni larghezza del massimo",
     "keep-max-width-desc": "Mantiene ogni colonna alla larghezza del massimo (es. 25% con max 4) anche con meno colonne — solo ricentra",
     "max-visible": "Colonne visibili: {value}",

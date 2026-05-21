@@ -27,7 +27,6 @@ RECONNECT_DELAY = 2.0
 MAX_EVENTS_PER_SECOND = 20
 PER_WORKSPACE = False
 WORKSPACE_MAX_VISIBLE: dict[int, int] = {}
-ONLY_AT_MAX = False
 KEEP_MAX_WIDTH = False
 CONFIG_FILE: str = ""
 
@@ -253,27 +252,30 @@ def _set_column_width_by_id(win_id: int, pct: str) -> None:
     niri_action("set-column-width", pct)
 
 
-def _anchor_and_center(col_map: dict[int, list[int]], max_vis: int,
-                       fills_viewport: bool) -> bool:
-    """Anchor the viewport when every column fits on screen."""
-    if len(col_map) > max_vis:
-        return False
-    niri_action("focus-column-first")
-    if not fills_viewport:
-        niri_action("center-visible-columns")
-    return True
+def _anchor_and_center(col_map: dict[int, list[int]], max_vis: int) -> bool:
+    """Anchor leftmost column then re-center to flush any stale scroll offset.
 
+    Always runs, even when col_count > max_vis (overflow case). Otherwise
+    niri keeps the scroll position from the previous layout (e.g. coming
+    from max=2 → max=4 with 6 cols leaves col6's scroll offset), and the
+    focused column ends up mid-viewport with a partial column on either
+    side instead of a clean 4-column fit.
 
-def _fills_viewport(col_count: int, max_vis: int) -> bool:
-    """Whether the current sizing mode fills the viewport horizontally.
-
-    Default mode resizes to fill. ONLY_AT_MAX skips resize below max.
-    KEEP_MAX_WIDTH locks each column at 100/max_vis %, leaving empty space
-    when fewer than max columns are open.
+    Uses focus-window --id (not focus-column-first) for a real scroll
+    reset, plus a small settle delay so the prior set-column-width batch
+    has time to apply before we re-anchor.
     """
-    if col_count >= max_vis:
-        return True
-    return not ONLY_AT_MAX and not KEEP_MAX_WIDTH
+    sorted_cols = sorted(col_map.keys())
+    if not sorted_cols:
+        log.info("anchor_and_center: SKIP, empty col_map")
+        return False
+    first_win = col_map[sorted_cols[0]][0]
+    log.info("anchor_and_center: %d cols, sleep, focus win=%d (col=%d), center",
+             len(sorted_cols), first_win, sorted_cols[0])
+    time.sleep(0.1)
+    niri_action("focus-window", "--id", str(first_win))
+    niri_action("center-visible-columns")
+    return True
 
 
 def _redistribute_incremental_open(ws_id: int, new_window_id: int) -> None:
@@ -299,15 +301,11 @@ def _redistribute_incremental_open(ws_id: int, new_window_id: int) -> None:
             return
         _prev_col_counts[ws_id] = cache_key
 
-    if ONLY_AT_MAX and col_count < max_vis:
-        log.info("ws=%d: %d cols < max=%d, keeping default layout (open)", ws_id, col_count, max_vis)
-        return
-
     # At or below threshold: full redistribute (all columns need sizing)
     if col_count <= max_vis:
         log.info("ws=%d: %d cols <= max=%d, full redistribute (open)", ws_id, col_count, max_vis)
         _redistribute_full(ws_id, col_map, col_count, max_vis, anchor_visible=False)
-        _anchor_and_center(col_map, max_vis, _fills_viewport(col_count, max_vis))
+        _anchor_and_center(col_map, max_vis)
         # Restore focus to new window (viewport stays since all cols visible)
         niri_action("focus-window", "--id", str(new_window_id))
         return
@@ -378,28 +376,19 @@ def _redistribute_incremental_close(ws_id: int, original_focused: int | None) ->
         if actual_count > 0:
             with _lock:
                 _prev_col_counts[ws_id] = (actual_count, max_vis)
-            if not ONLY_AT_MAX:
-                # Columns were sized by daemon, resize remaining (or hold width).
-                _redistribute_full(ws_id, col_map, actual_count, max_vis, anchor_visible=False)
-            else:
-                sorted_cols = sorted(col_map.keys())
-                niri_action("focus-window", "--id", str(col_map[sorted_cols[0]][0]))
-            _anchor_and_center(col_map, max_vis, _fills_viewport(actual_count, max_vis))
+            # Columns were sized by daemon, resize remaining (or hold width).
+            _redistribute_full(ws_id, col_map, actual_count, max_vis, anchor_visible=False)
+            _anchor_and_center(col_map, max_vis)
             if original_focused is not None:
                 niri_action("focus-window", "--id", str(original_focused))
-        if ONLY_AT_MAX:
-            close_mode = "centered remaining"
-        elif KEEP_MAX_WIDTH:
-            close_mode = "held width and centered"
-        else:
-            close_mode = "resized and centered"
+        close_mode = "held width and centered" if KEEP_MAX_WIDTH else "resized and centered"
         log.info("ws=%d: close event, %d cols < max=%d — %s",
                  ws_id, col_count, max_vis, close_mode)
 
 
 def _redistribute_full(ws_id: int, col_map: dict[int, list[int]] | None = None,
                        col_count: int | None = None, max_vis: int | None = None,
-                       force: bool = False, anchor_visible: bool = True) -> None:
+                       anchor_visible: bool = True) -> None:
     """Full redistribute using direct window ID focus (no focus-column-first walk).
 
     Used as fallback and for close events. Much less disruptive than the old
@@ -432,38 +421,30 @@ def _redistribute_full(ws_id: int, col_map: dict[int, list[int]] | None = None,
                 return
             _prev_col_counts[ws_id] = cache_key
 
-    hold_width = False
-    if ONLY_AT_MAX and col_count < max_vis:
-        if not force:
-            log.info("ws=%d: %d cols < max=%d, keeping default layout", ws_id, col_count, max_vis)
-            return
-        # Config reload while only-at-max is enabled: keep the configured default
-        # width instead of expanding columns that are intentionally below max.
-        width_base = max_vis
-        hold_width = True
-    elif KEEP_MAX_WIDTH and col_count < max_vis:
+    if KEEP_MAX_WIDTH and col_count < max_vis:
         # Lock columns at 100/max_vis %, leaving empty space — caller centers.
         width_base = max_vis
         hold_width = True
     else:
         width_base = min(col_count, max_vis)
+        hold_width = False
     base_pct = 100 // width_base
     # When holding width below max, "missing" slots absorb the remainder so
     # existing columns stay at exactly base_pct — don't grow the last one.
     remainder = 0 if hold_width else 100 - (base_pct * width_base)
     sorted_cols = sorted(col_map.keys())
 
-    log.info("ws=%d: %d cols, max=%d -> %d%% each (base=%d) [direct ID]",
-             ws_id, col_count, max_vis, base_pct, width_base)
+    log.info("ws=%d: %d cols, max=%d -> %d%% each (base=%d, hold=%s) [direct ID]",
+             ws_id, col_count, max_vis, base_pct, width_base, hold_width)
 
     # Set each column width by focusing a window in it directly (no walking)
     for i, col_idx in enumerate(sorted_cols):
         win_id = col_map[col_idx][0]
         pct = f"{base_pct + remainder}%" if i == len(sorted_cols) - 1 and remainder > 0 else f"{base_pct}%"
+        log.info("  → col=%d win=%d set %s", col_idx, win_id, pct)
         _set_column_width_by_id(win_id, pct)
 
-    if anchor_visible and not _anchor_and_center(
-            col_map, max_vis, _fills_viewport(col_count, max_vis)):
+    if anchor_visible and not _anchor_and_center(col_map, max_vis):
         niri_action("center-visible-columns")
 
 
@@ -705,10 +686,6 @@ def parse_args() -> argparse.Namespace:
         help=f"max events per second (default: {MAX_EVENTS_PER_SECOND})",
     )
     parser.add_argument(
-        "--only-at-max", action="store_true",
-        help="only redistribute when column count reaches max-visible",
-    )
-    parser.add_argument(
         "--keep-max-width", action="store_true",
         help="keep each column at 100/max-visible%% even when fewer columns are open",
     )
@@ -734,7 +711,7 @@ def parse_args() -> argparse.Namespace:
 # ─── Hot Reload ───
 def reload_config() -> None:
     """Reload configuration from CONFIG_FILE and trigger redistribution."""
-    global MAX_VISIBLE, PER_WORKSPACE, WORKSPACE_MAX_VISIBLE, ONLY_AT_MAX
+    global MAX_VISIBLE, PER_WORKSPACE, WORKSPACE_MAX_VISIBLE
     global KEEP_MAX_WIDTH, DEBOUNCE_SECONDS, MAX_EVENTS_PER_SECOND, _debounce_timer
     global _event_count, _event_window_start
 
@@ -754,13 +731,11 @@ def reload_config() -> None:
 
     old_layout_config = (
         MAX_VISIBLE, PER_WORKSPACE, dict(WORKSPACE_MAX_VISIBLE),
-        ONLY_AT_MAX, KEEP_MAX_WIDTH,
+        KEEP_MAX_WIDTH,
     )
 
     if "maxVisible" in cfg:
         MAX_VISIBLE = _int_at_least(cfg["maxVisible"], 1, MAX_VISIBLE)
-    if "onlyAtMax" in cfg:
-        ONLY_AT_MAX = bool(cfg["onlyAtMax"])
     if "keepMaxWidth" in cfg:
         KEEP_MAX_WIDTH = bool(cfg["keepMaxWidth"])
     if "perWorkspace" in cfg:
@@ -782,17 +757,16 @@ def reload_config() -> None:
 
     layout_config = (
         MAX_VISIBLE, PER_WORKSPACE, dict(WORKSPACE_MAX_VISIBLE),
-        ONLY_AT_MAX, KEEP_MAX_WIDTH,
+        KEEP_MAX_WIDTH,
     )
     layout_changed = layout_config != old_layout_config
 
     log.info(
         "config reloaded (max_visible=%d, debounce=%gms, max_events=%d, "
-        "only_at_max=%s, keep_max_width=%s, layout_changed=%s)",
+        "keep_max_width=%s, layout_changed=%s)",
         MAX_VISIBLE,
         DEBOUNCE_SECONDS * 1000,
         MAX_EVENTS_PER_SECOND,
-        ONLY_AT_MAX,
         KEEP_MAX_WIDTH,
         layout_changed,
     )
@@ -825,14 +799,13 @@ def reload_config() -> None:
         if col_count == 0:
             continue
         max_vis = get_max_visible(active_ws)
-        fills_viewport = _fills_viewport(col_count, max_vis)
         if col_count > max_vis:
             had_overflow = True
         _redistribute_full(
             active_ws, col_map, col_count, max_vis,
-            force=True, anchor_visible=False,
+            anchor_visible=False,
         )
-        _anchor_and_center(col_map, max_vis, fills_viewport)
+        _anchor_and_center(col_map, max_vis)
     if original_focused is not None:
         niri_action("focus-window", "--id", str(original_focused))
         if had_overflow:
@@ -843,7 +816,7 @@ def reload_config() -> None:
 def main() -> None:
     """Main entry point with reconnection loop."""
     global MAX_VISIBLE, DEBOUNCE_SECONDS, MAX_EVENTS_PER_SECOND
-    global PER_WORKSPACE, WORKSPACE_MAX_VISIBLE, ONLY_AT_MAX
+    global PER_WORKSPACE, WORKSPACE_MAX_VISIBLE
     global KEEP_MAX_WIDTH, CONFIG_FILE
 
     args = parse_args()
@@ -855,8 +828,6 @@ def main() -> None:
         DEBOUNCE_SECONDS = max(0.05, args.debounce)
     if args.max_events is not None:
         MAX_EVENTS_PER_SECOND = max(1, args.max_events)
-    if args.only_at_max:
-        ONLY_AT_MAX = True
     if args.keep_max_width:
         KEEP_MAX_WIDTH = True
     if args.per_workspace:
@@ -894,12 +865,7 @@ def main() -> None:
 
     mode = "per-workspace" if PER_WORKSPACE else "global"
     ws_cfg = f", ws_config={WORKSPACE_MAX_VISIBLE}" if WORKSPACE_MAX_VISIBLE else ""
-    flags = []
-    if ONLY_AT_MAX:
-        flags.append("only_at_max")
-    if KEEP_MAX_WIDTH:
-        flags.append("keep_max_width")
-    flag_str = f", flags={','.join(flags)}" if flags else ""
+    flag_str = ", keep_max_width" if KEEP_MAX_WIDTH else ""
     log.info("starting (max_visible=%d, mode=%s, debounce=%gms%s%s)",
              MAX_VISIBLE, mode, DEBOUNCE_SECONDS * 1000, ws_cfg, flag_str)
 

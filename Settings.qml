@@ -13,7 +13,6 @@ ColumnLayout {
 
     property bool valueEnabled: settings.enabled ?? defaults.enabled ?? true
     property bool valuePerWorkspace: settings.perWorkspace ?? defaults.perWorkspace ?? false
-    property bool valueOnlyAtMax: settings.onlyAtMax ?? defaults.onlyAtMax ?? false
     property bool valueKeepMaxWidth: settings.keepMaxWidth ?? defaults.keepMaxWidth ?? false
     property int valueMaxVisible: settings.maxVisible ?? defaults.maxVisible ?? 4
     property int valueDebounceMs: settings.debounceMs ?? defaults.debounceMs ?? 300
@@ -25,7 +24,6 @@ ColumnLayout {
         if (!pluginApi) return;
         pluginApi.pluginSettings.enabled = root.valueEnabled;
         pluginApi.pluginSettings.perWorkspace = root.valuePerWorkspace;
-        pluginApi.pluginSettings.onlyAtMax = root.valueOnlyAtMax;
         pluginApi.pluginSettings.keepMaxWidth = root.valueKeepMaxWidth;
         pluginApi.pluginSettings.maxVisible = root.valueMaxVisible;
         pluginApi.pluginSettings.debounceMs = root.valueDebounceMs;
@@ -36,7 +34,6 @@ ColumnLayout {
     function runtimeConfig() {
         return {
             maxVisible: root.valueMaxVisible,
-            onlyAtMax: root.valueOnlyAtMax,
             keepMaxWidth: root.valueKeepMaxWidth,
             perWorkspace: root.valuePerWorkspace,
             workspaceMaxVisible: settings.workspaceMaxVisible ?? {},
@@ -74,22 +71,6 @@ ColumnLayout {
         }
     }
 
-    // ─── Only at Max ───
-    NToggle {
-        Layout.fillWidth: true
-        label: pluginApi?.tr("settings.only-at-max")
-        description: pluginApi?.tr("settings.only-at-max-desc")
-        checked: root.valueOnlyAtMax
-        onToggled: checked => {
-            root.valueOnlyAtMax = checked;
-            if (checked && root.valueKeepMaxWidth) {
-                root.valueKeepMaxWidth = false;
-            }
-            root.saveSettings();
-            root.applyRuntimeConfig();
-        }
-    }
-
     // ─── Keep Max Width ───
     NToggle {
         Layout.fillWidth: true
@@ -98,9 +79,6 @@ ColumnLayout {
         checked: root.valueKeepMaxWidth
         onToggled: checked => {
             root.valueKeepMaxWidth = checked;
-            if (checked && root.valueOnlyAtMax) {
-                root.valueOnlyAtMax = false;
-            }
             root.saveSettings();
             root.applyRuntimeConfig();
         }

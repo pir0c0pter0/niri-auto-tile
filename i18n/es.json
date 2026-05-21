@@ -21,8 +21,6 @@
     "enabled-desc": "Redistribuir automaticamente los anchos de columna al abrir o cerrar ventanas",
     "per-workspace": "Por espacio de trabajo",
     "per-workspace-desc": "Cada espacio de trabajo tiene su propia configuracion de columnas",
-    "only-at-max": "Solo al maximo",
-    "only-at-max-desc": "Redistribuir solo cuando el numero de columnas alcance el maximo",
     "keep-max-width": "Mantener ancho del maximo",
     "keep-max-width-desc": "Mantiene cada columna con el ancho del maximo (ej. 25% con max 4) incluso con menos columnas — solo recentra",
     "max-visible": "Columnas visibles: {value}",

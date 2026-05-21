@@ -21,8 +21,6 @@
     "enabled-desc": "在窗口打开或关闭时自动重新分配列宽",
     "per-workspace": "按工作区",
     "per-workspace-desc": "每个工作区有独立的列数设置",
-    "only-at-max": "仅在最大时",
-    "only-at-max-desc": "仅在列数达到最大值时重新分配",
     "keep-max-width": "保持最大宽度",
     "keep-max-width-desc": "即使列数较少，也将每列保持在最大宽度（例如最大值 4 时为 25%），仅重新居中",
     "max-visible": "可见列数: {value}",

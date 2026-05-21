@@ -14,7 +14,6 @@ Item {
     readonly property bool enabled: pluginApi?.pluginSettings?.enabled ?? true
     readonly property int maxVisible: pluginApi?.pluginSettings?.maxVisible ?? 4
     readonly property bool perWorkspace: pluginApi?.pluginSettings?.perWorkspace ?? false
-    readonly property bool onlyAtMax: pluginApi?.pluginSettings?.onlyAtMax ?? false
     readonly property bool keepMaxWidth: pluginApi?.pluginSettings?.keepMaxWidth ?? false
     readonly property var workspaceMaxVisible: pluginApi?.pluginSettings?.workspaceMaxVisible ?? ({})
     readonly property int debounceMs: pluginApi?.pluginSettings?.debounceMs ?? 300
@@ -44,10 +43,6 @@ Item {
     }
 
     onPerWorkspaceChanged: {
-        if (running) hotReloadConfig();
-    }
-
-    onOnlyAtMaxChanged: {
         if (running) hotReloadConfig();
     }
 
@@ -92,7 +87,6 @@ Item {
         const cfg = overrides && typeof overrides === "object" ? overrides : {};
         return {
             maxVisible: cfg.maxVisible ?? maxVisible,
-            onlyAtMax: cfg.onlyAtMax ?? onlyAtMax,
             keepMaxWidth: cfg.keepMaxWidth ?? keepMaxWidth,
             perWorkspace: cfg.perWorkspace ?? perWorkspace,
             workspaceMaxVisible: cfg.workspaceMaxVisible ?? workspaceMaxVisible,
@@ -144,13 +138,6 @@ Item {
         if (running) hotReloadConfig({ perWorkspace: value });
     }
 
-    function setOnlyAtMax(value) {
-        if (!pluginApi?.pluginSettings) return;
-        pluginApi.pluginSettings.onlyAtMax = value;
-        pluginApi.saveSettings();
-        if (running) hotReloadConfig({ onlyAtMax: value });
-    }
-
     function setKeepMaxWidth(value) {
         if (!pluginApi?.pluginSettings) return;
         pluginApi.pluginSettings.keepMaxWidth = value;
@@ -190,9 +177,6 @@ Item {
                 "--max-events", String(root.maxEventsPerSecond),
                 "--config-file", root.configFilePath
             ];
-            if (root.onlyAtMax) {
-                args.push("--only-at-max");
-            }
             if (root.keepMaxWidth) {
                 args.push("--keep-max-width");
             }

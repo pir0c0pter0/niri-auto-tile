@@ -21,8 +21,6 @@
     "enabled-desc": "Spaltenbreiten automatisch neu verteilen, wenn Fenster geoffnet oder geschlossen werden",
     "per-workspace": "Pro Arbeitsbereich",
     "per-workspace-desc": "Jeder Arbeitsbereich verfugt uber eine eigene Spaltenanzahl-Einstellung",
-    "only-at-max": "Nur bei maximaler Einstellung",
-    "only-at-max-desc": "Erst dann neu verteilen, wenn die Spaltenanzahl das Maximum erreicht hat",
     "keep-max-width": "Maximalbreite beibehalten",
     "keep-max-width-desc": "Jede Spalte behalt die Maximalbreite (z. B. 25 % bei Maximum 4), auch wenn weniger Spalten geoffnet sind — nur Neuzentrierung",
     "max-visible": "Maximal anzeigbare Spalten: {value}",

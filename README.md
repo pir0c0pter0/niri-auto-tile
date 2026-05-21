@@ -23,7 +23,7 @@ Niri is a scrollable-tiling Wayland compositor where windows are arranged in col
 - **Multi-workspace support** — redistributes all active workspaces, restoring original focus afterwards
 - **Configurable max visible columns** — caps how many columns fit on screen (default: 4)
 - **Per-workspace settings** — each workspace can have its own column count
-- **Only at max mode** — only redistribute when column count reaches the configured maximum
+- **Keep max width mode** — locks every column at `100/max-visible %` even when fewer columns are open, re-centering the layout instead of expanding
 - **Smart event filtering** — only reacts to actual window open/close, ignores title changes (e.g., browser tab switches)
 - **Theme-aware UI** — all colors follow the active Noctalia theme (no hardcoded colors)
 - **Thread-safe debouncing** — coalesces rapid events to prevent flickering
@@ -127,7 +127,7 @@ systemctl --user enable --now niri-auto-tile.service
 
 - **Enable Auto-Tile** — master on/off switch
 - **Per workspace** — each workspace has its own column count
-- **Only at max** — only redistribute when columns reach the maximum
+- **Keep max width** — lock columns at `100/max-visible %` even with fewer cols, re-center the layout
 - **Max visible columns** — slider from 1 to 8
 - **Debounce delay** — 100-1000ms event coalescence
 - **Rate limit** — 5-50 events per second
@@ -147,7 +147,7 @@ python3 auto-tile.py \
   --max-visible 4 \
   --debounce 0.3 \
   --max-events 20 \
-  --only-at-max \
+  --keep-max-width \
   --per-workspace \
   --workspace-config '{"3":2,"1":4}' \
   --config-file ~/.config/niri/auto-tile-runtime.json \
@@ -165,7 +165,7 @@ python3 auto-tile.py \
 | `RECONNECT_DELAY` | `2.0` | Delay before reconnecting after event stream drops |
 | `MAX_EVENTS_PER_SECOND` | `20` | Rate limiter threshold |
 | `PER_WORKSPACE` | `False` | Per-workspace column count settings |
-| `ONLY_AT_MAX` | `False` | Only redistribute at or above max visible |
+| `KEEP_MAX_WIDTH` | `False` | Hold each column at `100/MAX_VISIBLE %` below max, re-centering |
 | `CONFIG_FILE` | `""` | Optional runtime JSON file used for hot reload via `SIGUSR1` |
 
 ### Recommended niri layout

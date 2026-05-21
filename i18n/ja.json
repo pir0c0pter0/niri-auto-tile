@@ -21,8 +21,6 @@
     "enabled-desc": "ウィンドウの開閉時にカラム幅を自動的に再分配します",
     "per-workspace": "ワークスペースごと",
     "per-workspace-desc": "各ワークスペースに独自のカラム数設定があります",
-    "only-at-max": "最大時のみ",
-    "only-at-max-desc": "カラム数が最大に達した場合のみ再分配します",
     "keep-max-width": "最大幅を維持",
     "keep-max-width-desc": "カラム数が少なくても各カラムを最大幅 (例: 最大4で25%) に保ち、再センタリングのみ行います",
     "max-visible": "表示カラム数: {value}",
