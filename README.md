@@ -31,6 +31,7 @@ Niri is a scrollable-tiling Wayland compositor where windows are arranged in col
 - **Auto-reconnection** — recovers if the niri event stream drops
 - **Graceful shutdown** — handles SIGTERM cleanly
 - **JSON IPC** — uses niri's structured JSON protocol, not fragile text parsing
+- **Live runtime settings** — Noctalia changes are applied with `SIGUSR1` and niri IPC, without restarting the daemon
 - **Input validation** — validates all IPC responses and data types
 - **i18n** — English and Portuguese translations
 
@@ -53,10 +54,16 @@ Niri is a scrollable-tiling Wayland compositor where windows are arranged in col
    spawn-at-startup "python3" "/home/YOUR_USER/.config/niri/auto-tile.py"
    ```
 
-3. **Restart niri** or run manually:
+3. **Start it for the current session:**
 
    ```bash
    python3 ~/.config/niri/auto-tile.py
+   ```
+
+   The `spawn-at-startup` entry takes effect the next time niri starts. If you need niri to pick up that autostart edit immediately without a full compositor restart, use niri's native config reload once:
+
+   ```bash
+   niri msg action load-config-file
    ```
 
 ### Noctalia Shell Plugin
@@ -127,6 +134,8 @@ systemctl --user enable --now niri-auto-tile.service
 - **Daemon status** — running/error/stopped indicator
 - **About** — credits and version info
 
+Settings that affect layout or event handling are applied live. The plugin writes `runtime-config.json` with Quickshell's `FileView`, sends `SIGUSR1` to the running daemon, and the daemon updates its in-memory config. It does not call `niri msg action load-config-file`, restart niri, or restart the daemon for normal settings changes.
+
 ---
 
 ## Configuration
@@ -141,6 +150,7 @@ python3 auto-tile.py \
   --only-at-max \
   --per-workspace \
   --workspace-config '{"3":2,"1":4}' \
+  --config-file ~/.config/niri/auto-tile-runtime.json \
   --debug
 ```
 
@@ -156,6 +166,7 @@ python3 auto-tile.py \
 | `MAX_EVENTS_PER_SECOND` | `20` | Rate limiter threshold |
 | `PER_WORKSPACE` | `False` | Per-workspace column count settings |
 | `ONLY_AT_MAX` | `False` | Only redistribute at or above max visible |
+| `CONFIG_FILE` | `""` | Optional runtime JSON file used for hot reload via `SIGUSR1` |
 
 ### Recommended niri layout
 
@@ -194,11 +205,23 @@ niri event-stream (JSON)
    Save Original Focus   — remember current workspace and focused window
          |
          v
-   Redistribute All      — set-column-width for each column on every active workspace
+   Redistribute          — set-column-width for affected columns via niri IPC
          |
          v
    Restore Focus         — return to original workspace and window
 ```
+
+### Runtime Configuration
+
+The Noctalia plugin keeps the Python daemon alive across normal setting changes:
+
+1. `Settings.qml` and `Panel.qml` persist the new values through Noctalia
+2. `Main.qml` coalesces rapid changes, writes `runtime-config.json`, and sends `SIGUSR1`
+3. `auto-tile.py` reloads that file from the event loop, outside signal-handler context
+4. Layout-affecting changes clear the column cache and redistribute via niri actions
+5. Timing-only changes (`debounceMs`, `maxEventsPerSecond`) update memory only and do not touch window layout
+
+Process restarts are limited to enable/disable, plugin teardown, and failure recovery. niri config reloads are intentionally not used in the live settings path because all required layout operations are available through native `niri msg action` IPC.
 
 ### Multi-Workspace Redistribution
 
@@ -206,9 +229,10 @@ When a window event triggers redistribution:
 
 1. The daemon saves the currently focused workspace and window
 2. Iterates through all active workspaces with tiled windows
-3. For each workspace, focuses a window there, walks columns, and sets equal widths
-4. After all workspaces are processed, restores focus to the original window
-5. If no window was focused (e.g., panel was open), falls back to focusing any window on the original workspace via `niri msg -j workspaces`
+3. Builds a column map from `niri msg -j windows`
+4. Uses `niri msg action focus-window --id ...` and `set-column-width` on one representative window per column
+5. After all workspaces are processed, restores focus to the original window
+6. If no window was focused (e.g., panel was open), falls back to focusing any window on the original workspace via `niri msg -j workspaces`
 
 ### Event Filtering
 

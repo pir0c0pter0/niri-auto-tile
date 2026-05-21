@@ -9,6 +9,7 @@ Item {
     property bool running: false
     property string status: "stopped"
     property bool pendingRestart: false
+    property var pendingRuntimeConfig: null
 
     readonly property bool enabled: pluginApi?.pluginSettings?.enabled ?? true
     readonly property int maxVisible: pluginApi?.pluginSettings?.maxVisible ?? 4
@@ -49,6 +50,14 @@ Item {
         if (running) hotReloadConfig();
     }
 
+    onDebounceMsChanged: {
+        if (running) hotReloadConfig();
+    }
+
+    onMaxEventsPerSecondChanged: {
+        if (running) hotReloadConfig();
+    }
+
     Component.onCompleted: {
         if (enabled) startDaemon();
     }
@@ -69,26 +78,36 @@ Item {
     }
 
     function restartDaemon() {
+        // Explicit lifecycle escape hatch; normal settings changes use hotReloadConfig().
         pendingRestart = true;
         stopDaemon();
     }
 
-    function hotReloadConfig() {
-        // Build command with current values, then write config + send SIGUSR1
-        const config = JSON.stringify({
-            maxVisible: maxVisible,
-            onlyAtMax: onlyAtMax,
-            perWorkspace: perWorkspace,
-            workspaceMaxVisible: workspaceMaxVisible
-        });
-        configWriter.command = [
-            "bash", "-c",
-            "printf '%s' \"$1\" > \"$2\"",
-            "auto-tile-config-writer",
-            config,
-            configFilePath
-        ];
-        configWriter.running = true;
+    function buildRuntimeConfig(overrides) {
+        const cfg = overrides && typeof overrides === "object" ? overrides : {};
+        return {
+            maxVisible: cfg.maxVisible ?? maxVisible,
+            onlyAtMax: cfg.onlyAtMax ?? onlyAtMax,
+            perWorkspace: cfg.perWorkspace ?? perWorkspace,
+            workspaceMaxVisible: cfg.workspaceMaxVisible ?? workspaceMaxVisible,
+            debounceMs: cfg.debounceMs ?? debounceMs,
+            maxEventsPerSecond: cfg.maxEventsPerSecond ?? maxEventsPerSecond
+        };
+    }
+
+    function hotReloadConfig(overrides) {
+        if (!running) return;
+        pendingRuntimeConfig = buildRuntimeConfig(overrides);
+        configReloadTimer.stop();
+        configReloadTimer.start();
+    }
+
+    function flushRuntimeConfig() {
+        if (!running) return;
+        const config = JSON.stringify(pendingRuntimeConfig ?? buildRuntimeConfig({}));
+        pendingRuntimeConfig = null;
+        runtimeConfigFile.setText(config);
+        root.daemonProcess.signal(10); // SIGUSR1
     }
 
     function setMaxVisible(count) {
@@ -96,6 +115,7 @@ Item {
         if (!pluginApi?.pluginSettings) return;
         pluginApi.pluginSettings.maxVisible = count;
         pluginApi.saveSettings();
+        if (running) hotReloadConfig({ maxVisible: count });
     }
 
     function setWorkspaceMaxVisible(wsId, count) {
@@ -108,19 +128,21 @@ Item {
         updated[String(wsId)] = count;
         pluginApi.pluginSettings.workspaceMaxVisible = updated;
         pluginApi.saveSettings();
-        if (running) hotReloadConfig();
+        if (running) hotReloadConfig({ workspaceMaxVisible: updated });
     }
 
     function setPerWorkspace(value) {
         if (!pluginApi?.pluginSettings) return;
         pluginApi.pluginSettings.perWorkspace = value;
         pluginApi.saveSettings();
+        if (running) hotReloadConfig({ perWorkspace: value });
     }
 
     function setOnlyAtMax(value) {
         if (!pluginApi?.pluginSettings) return;
         pluginApi.pluginSettings.onlyAtMax = value;
         pluginApi.saveSettings();
+        if (running) hotReloadConfig({ onlyAtMax: value });
     }
 
     function getMaxVisibleForWorkspace(wsId) {
@@ -133,15 +155,17 @@ Item {
         return maxVisible;
     }
 
-    readonly property Process configWriter: Process {
-        running: false
+    readonly property FileView runtimeConfigFile: FileView {
+        path: root.configFilePath
+        blockWrites: true
+        atomicWrites: true
+        watchChanges: false
+    }
 
-        onExited: {
-            // Config file written, now send SIGUSR1 to daemon
-            if (root.running) {
-                root.daemonProcess.signal(10); // SIGUSR1
-            }
-        }
+    readonly property Timer configReloadTimer: Timer {
+        interval: 100
+        repeat: false
+        onTriggered: root.flushRuntimeConfig()
     }
 
     readonly property Process daemonProcess: Process {

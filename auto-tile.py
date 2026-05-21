@@ -11,6 +11,7 @@ import argparse
 import json
 import logging
 import os
+import select
 import signal
 import subprocess
 import threading
@@ -44,6 +45,7 @@ _lock = threading.Lock()
 _event_count = 0
 _event_window_start = 0.0
 _pending_event: dict | None = None  # {"type": "open"/"close", "window_id": int}
+_config_reload_requested = threading.Event()
 
 
 # ─── Validation ───
@@ -54,6 +56,22 @@ def _valid_id(value) -> int | None:
         return val if val >= 0 else None
     except (TypeError, ValueError):
         return None
+
+
+def _int_at_least(value, minimum: int, fallback: int) -> int:
+    """Convert value to int, enforcing a lower bound."""
+    try:
+        return max(minimum, int(value))
+    except (TypeError, ValueError):
+        return fallback
+
+
+def _milliseconds_to_seconds(value, fallback: float) -> float:
+    """Convert a millisecond config value to seconds."""
+    try:
+        return max(0.05, float(value) / 1000.0)
+    except (TypeError, ValueError):
+        return fallback
 
 
 def get_max_visible(ws_id: int) -> int:
@@ -564,6 +582,14 @@ def should_redistribute(event: dict) -> bool:
     return False
 
 
+def process_pending_config_reload() -> None:
+    """Apply SIGUSR1-requested config reloads outside the signal handler."""
+    if not _config_reload_requested.is_set():
+        return
+    _config_reload_requested.clear()
+    reload_config()
+
+
 def run_event_loop() -> None:
     """Connect to niri event stream and process events."""
     global _known_window_ids, _debounce_timer, _event_count, _event_window_start
@@ -590,7 +616,22 @@ def run_event_loop() -> None:
     )
 
     try:
-        for line in proc.stdout:
+        stdout = proc.stdout
+        if stdout is None:
+            return
+
+        while True:
+            process_pending_config_reload()
+
+            ready, _, _ = select.select([stdout], [], [], 0.25)
+            if not ready:
+                if proc.poll() is not None:
+                    break
+                continue
+
+            line = stdout.readline()
+            if line == "":
+                break
             line = line.strip()
             if not line:
                 continue
@@ -605,11 +646,12 @@ def run_event_loop() -> None:
             if should_redistribute(event):
                 debounced_redistribute()
     finally:
-        proc.terminate()
-        try:
-            proc.wait(timeout=2)
-        except subprocess.TimeoutExpired:
-            proc.kill()
+        if proc.poll() is None:
+            proc.terminate()
+            try:
+                proc.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                proc.kill()
 
 
 # ─── CLI ───
@@ -657,6 +699,8 @@ def parse_args() -> argparse.Namespace:
 def reload_config() -> None:
     """Reload configuration from CONFIG_FILE and trigger redistribution."""
     global MAX_VISIBLE, PER_WORKSPACE, WORKSPACE_MAX_VISIBLE, ONLY_AT_MAX
+    global DEBOUNCE_SECONDS, MAX_EVENTS_PER_SECOND, _debounce_timer
+    global _event_count, _event_window_start
 
     if not CONFIG_FILE or not os.path.isfile(CONFIG_FILE):
         log.warning("no config file to reload")
@@ -672,8 +716,10 @@ def reload_config() -> None:
     if not isinstance(cfg, dict):
         return
 
+    old_layout_config = (MAX_VISIBLE, PER_WORKSPACE, dict(WORKSPACE_MAX_VISIBLE), ONLY_AT_MAX)
+
     if "maxVisible" in cfg:
-        MAX_VISIBLE = max(1, int(cfg["maxVisible"]))
+        MAX_VISIBLE = _int_at_least(cfg["maxVisible"], 1, MAX_VISIBLE)
     if "onlyAtMax" in cfg:
         ONLY_AT_MAX = bool(cfg["onlyAtMax"])
     if "perWorkspace" in cfg:
@@ -686,13 +732,36 @@ def reload_config() -> None:
                 for k, v in raw.items()
                 if str(k).isdigit() and str(v).isdigit()
             }
+    if "debounceMs" in cfg:
+        DEBOUNCE_SECONDS = _milliseconds_to_seconds(cfg["debounceMs"], DEBOUNCE_SECONDS)
+    if "maxEventsPerSecond" in cfg:
+        MAX_EVENTS_PER_SECOND = _int_at_least(
+            cfg["maxEventsPerSecond"], 1, MAX_EVENTS_PER_SECOND,
+        )
 
-    log.info("config reloaded (max_visible=%d)", MAX_VISIBLE)
+    layout_config = (MAX_VISIBLE, PER_WORKSPACE, dict(WORKSPACE_MAX_VISIBLE), ONLY_AT_MAX)
+    layout_changed = layout_config != old_layout_config
 
-    # Clear cached state and force redistribution after config changes.
+    log.info(
+        "config reloaded (max_visible=%d, debounce=%gms, max_events=%d, layout_changed=%s)",
+        MAX_VISIBLE,
+        DEBOUNCE_SECONDS * 1000,
+        MAX_EVENTS_PER_SECOND,
+        layout_changed,
+    )
+
+    # Timing-only changes should not touch window layout or focus.
     with _lock:
+        _event_count = 0
+        _event_window_start = 0.0
+        if not layout_changed:
+            return
+        if _debounce_timer is not None:
+            _debounce_timer.cancel()
+            _debounce_timer = None
         _prev_col_counts.clear()
-    original_ws, original_focused = get_focused_workspace()
+
+    _, original_focused = get_focused_workspace()
     for active_ws in get_active_workspaces():
         _redistribute_full(active_ws, force=True)
     if original_focused is not None:
@@ -744,9 +813,10 @@ def main() -> None:
         raise KeyboardInterrupt
     signal.signal(signal.SIGTERM, _shutdown)
 
-    # Handle SIGUSR1 for hot config reload (no restart needed)
+    # Handle SIGUSR1 for hot config reload (no restart needed).
+    # The actual reload happens in the event loop, outside signal context.
     def _reload(signum, frame):
-        reload_config()
+        _config_reload_requested.set()
     signal.signal(signal.SIGUSR1, _reload)
 
     mode = "per-workspace" if PER_WORKSPACE else "global"

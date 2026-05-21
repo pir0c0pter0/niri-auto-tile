@@ -31,6 +31,21 @@ ColumnLayout {
         pluginApi.saveSettings();
     }
 
+    function runtimeConfig() {
+        return {
+            maxVisible: root.valueMaxVisible,
+            onlyAtMax: root.valueOnlyAtMax,
+            perWorkspace: root.valuePerWorkspace,
+            workspaceMaxVisible: settings.workspaceMaxVisible ?? {},
+            debounceMs: root.valueDebounceMs,
+            maxEventsPerSecond: root.valueMaxEventsPerSecond
+        };
+    }
+
+    function applyRuntimeConfig() {
+        pluginApi?.mainInstance?.hotReloadConfig(root.runtimeConfig());
+    }
+
     // ─── Enable / Disable ───
     NToggle {
         Layout.fillWidth: true
@@ -52,7 +67,7 @@ ColumnLayout {
         onToggled: checked => {
             root.valuePerWorkspace = checked;
             root.saveSettings();
-            pluginApi?.mainInstance?.restartDaemon();
+            root.applyRuntimeConfig();
         }
     }
 
@@ -65,7 +80,7 @@ ColumnLayout {
         onToggled: checked => {
             root.valueOnlyAtMax = checked;
             root.saveSettings();
-            pluginApi?.mainInstance?.restartDaemon();
+            root.applyRuntimeConfig();
         }
     }
 
@@ -88,7 +103,7 @@ ColumnLayout {
             onMoved: {
                 root.valueMaxVisible = Math.round(value);
                 root.saveSettings();
-                pluginApi?.mainInstance?.restartDaemon();
+                root.applyRuntimeConfig();
             }
         }
     }
@@ -112,7 +127,7 @@ ColumnLayout {
             onMoved: {
                 root.valueDebounceMs = Math.round(value);
                 root.saveSettings();
-                pluginApi?.mainInstance?.restartDaemon();
+                root.applyRuntimeConfig();
             }
         }
     }
@@ -136,7 +151,7 @@ ColumnLayout {
             onMoved: {
                 root.valueMaxEventsPerSecond = Math.round(value);
                 root.saveSettings();
-                pluginApi?.mainInstance?.restartDaemon();
+                root.applyRuntimeConfig();
             }
         }
     }

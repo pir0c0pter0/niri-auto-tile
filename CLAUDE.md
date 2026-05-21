@@ -13,7 +13,7 @@ niri-auto-tile is an auto-tiling daemon for the [niri](https://github.com/YaLTeR
 python3 auto-tile.py --max-visible 4 --debounce 0.3 --debug
 ```
 
-**As Noctalia plugin:** Install to `~/.config/noctalia/plugins/niri-auto-tile/`, enable in Noctalia Settings. The QML layer (`Main.qml`) manages the daemon process lifecycle automatically.
+**As Noctalia plugin:** Install to `~/.config/noctalia/plugins/niri-auto-tile/`, enable in Noctalia Settings. The QML layer (`Main.qml`) manages the daemon process lifecycle and applies normal setting changes through runtime config hot reloads instead of daemon restarts.
 
 There is no build step, test suite, or linter configured. The Python script uses only the standard library (no dependencies).
 
@@ -23,21 +23,23 @@ There is no build step, test suite, or linter configured. The Python script uses
 
 1. **Python daemon** (`auto-tile.py`) — the core logic. Runs as a long-lived process that connects to `niri msg -j event-stream`, filters events, debounces, and calls `niri msg action` to resize columns. Can run completely standalone without Noctalia.
 
-2. **QML plugin layer** (Noctalia Shell integration) — provides GUI controls. `Main.qml` spawns/stops the Python daemon as a child process, passing settings as CLI args. The QML files depend on Noctalia/Quickshell APIs (`qs.Commons`, `qs.Widgets`, `qs.Services.UI`).
+2. **QML plugin layer** (Noctalia Shell integration) — provides GUI controls. `Main.qml` spawns/stops the Python daemon as a child process, passes initial settings as CLI args, then writes `runtime-config.json` and sends `SIGUSR1` for live settings changes. The QML files depend on Noctalia/Quickshell APIs (`qs.Commons`, `qs.Widgets`, `qs.Services.UI`).
 
 ### Event flow (Python daemon)
 
 ```
-niri event-stream → Event Filter (new window IDs only) → Rate Limiter → Debounce Timer → Redistribute All Workspaces → Restore Focus
+niri event-stream → Event Filter (new window IDs only) → Rate Limiter → Debounce Timer → niri IPC Actions → Restore Focus
 ```
 
 Key detail: `WindowOpenedOrChanged` events are filtered by tracking `_known_window_ids`. Only truly new window IDs trigger redistribution — title changes (e.g., browser tab switches) are ignored.
+
+Runtime config changes are also reactive: `SIGUSR1` only sets a pending flag, and the event loop applies the reload outside signal-handler context. Layout-affecting changes clear caches and call native niri actions; timing-only changes update daemon memory without touching windows or focus.
 
 ### QML entry points (defined in `manifest.json`)
 
 | File | Role |
 |------|------|
-| `Main.qml` | Daemon lifecycle (start/stop/restart), IPC handler, settings bridge, self-contained i18n |
+| `Main.qml` | Daemon lifecycle (start/stop/failure restart), runtime config hot reload, IPC handler, settings bridge |
 | `BarWidget.qml` | Bar indicator with column count visualization and status dot |
 | `Panel.qml` | Floating panel with visual 1-4 column grid selector |
 | `Settings.qml` | Full settings page (toggles, sliders, status indicator) |
@@ -49,6 +51,8 @@ All QML components receive `pluginApi` from Noctalia and access the daemon insta
 All communication with niri uses `subprocess.run(["niri", "msg", ...])` in list form (never `shell=True`). Two helper functions:
 - `niri_cmd(*args)` — queries that return JSON (windows, workspaces, focused-window)
 - `niri_action(*args)` — fire-and-forget actions (focus-window, set-column-width, center-visible-columns)
+
+Normal settings changes do not call `niri msg action load-config-file`, restart niri, or restart the daemon. The only restarts left are process lifecycle operations: enable/disable, plugin teardown, and automatic recovery after a daemon crash.
 
 ### Thread safety
 
