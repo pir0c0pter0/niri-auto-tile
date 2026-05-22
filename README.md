@@ -24,6 +24,9 @@ Niri is a scrollable-tiling Wayland compositor where windows are arranged in col
 - **Configurable max visible columns** — caps how many columns fit on screen (default: 4)
 - **Per-workspace settings** — each workspace can have its own column count
 - **Keep max width mode** — locks every column at `100/max-visible %` even when fewer columns are open, re-centering the layout instead of expanding
+- **Synced new-window width** — keeps niri's `layout.default-column-width` aligned with the global `maxVisible` value, so new windows open at the right size before post-open redistribution runs
+- **Open-event retry path** — retries newly opened windows until niri publishes their workspace and column layout
+- **Event-stream layout cache** — tracks `WindowsChanged`, `WindowLayoutsChanged`, and focus changes to reduce slow IPC queries during busy window creation
 - **Smart event filtering** — only reacts to actual window open/close, ignores title changes (e.g., browser tab switches)
 - **Theme-aware UI** — all colors follow the active Noctalia theme (no hardcoded colors)
 - **Thread-safe debouncing** — coalesces rapid events to prevent flickering
@@ -134,7 +137,9 @@ systemctl --user enable --now niri-auto-tile.service
 - **Daemon status** — running/error/stopped indicator
 - **About** — credits and version info
 
-Settings that affect layout or event handling are applied live. The plugin writes `runtime-config.json` with Quickshell's `FileView`, sends `SIGUSR1` to the running daemon, and the daemon updates its in-memory config. It does not call `niri msg action load-config-file`, restart niri, or restart the daemon for normal settings changes.
+Settings that affect layout or event handling are applied live. The plugin writes `runtime-config.json` with Quickshell's `FileView`, sends `SIGUSR1` to the running daemon, and the daemon updates its in-memory config. It does not restart niri or restart the daemon for normal settings changes.
+
+When the global **Max visible columns** value changes, the daemon also updates niri's top-level `layout { default-column-width ... }` to `1/maxVisible` and calls `niri msg action load-config-file`. This makes future windows open at the same width auto-tile will enforce. Per-workspace overrides still apply during redistribution, but niri only has one global default for newly created columns.
 
 ---
 
@@ -151,6 +156,7 @@ python3 auto-tile.py \
   --per-workspace \
   --workspace-config '{"3":2,"1":4}' \
   --config-file ~/.config/niri/auto-tile-runtime.json \
+  --niri-config-file ~/.config/niri/config.kdl \
   --debug
 ```
 
@@ -161,16 +167,22 @@ python3 auto-tile.py \
 | `MAX_VISIBLE` | `4` | Maximum columns visible on screen at once |
 | `MAX_COLUMNS` | `20` | Safety cap for total column count |
 | `DEBOUNCE_SECONDS` | `0.3` | Delay before redistribution (coalesces rapid events) |
+| `OPEN_DEBOUNCE_SECONDS` | `0.1` | Shorter debounce used for window-open events |
+| `CLOSE_DEBOUNCE_SECONDS` | `0.05` | Shorter debounce used for window-close events |
+| `MAX_DEBOUNCE_SECONDS` | `0.75` | Maximum time a burst can keep delaying redistribution |
+| `OPEN_RETRY_DELAY_SECONDS` | `0.15` | Delay between retries while a new window layout is not ready |
+| `OPEN_RETRY_ATTEMPTS` | `3` | Maximum post-open layout retries |
 | `NIRI_TIMEOUT` | `5` | Timeout for niri IPC calls (seconds) |
+| `NIRI_CONFIG_FILE` | `~/.config/niri/config.kdl` | niri config file updated for `default-column-width` sync |
 | `RECONNECT_DELAY` | `2.0` | Delay before reconnecting after event stream drops |
 | `MAX_EVENTS_PER_SECOND` | `20` | Rate limiter threshold |
 | `PER_WORKSPACE` | `False` | Per-workspace column count settings |
 | `KEEP_MAX_WIDTH` | `False` | Hold each column at `100/MAX_VISIBLE %` below max, re-centering |
 | `CONFIG_FILE` | `""` | Optional runtime JSON file used for hot reload via `SIGUSR1` |
 
-### Recommended niri layout
+### Synced niri layout
 
-For best results, set your default column width to match `MAX_VISIBLE`:
+The daemon automatically keeps the top-level niri layout default in sync with the global `MAX_VISIBLE` value:
 
 ```kdl
 // ~/.config/niri/config.kdl
@@ -185,6 +197,8 @@ layout {
 }
 ```
 
+For example, changing the Noctalia setting from 4 to 2 visible columns changes the default to `proportion 0.5` and reloads niri's config. This affects newly opened windows immediately. Existing windows are still resized through `niri msg action set-column-width`.
+
 ---
 
 ## How It Works
@@ -193,13 +207,16 @@ layout {
 niri event-stream (JSON)
          |
          v
-   Event Filter          — only WindowOpened / WindowClosed (not title changes)
+   Event Filter          — window open/close plus layout and focus cache updates
          |
          v
    Rate Limiter          — max 20 events/second sliding window
          |
          v
    Debounce Timer        — 300ms coalescence
+         |
+         v
+   Layout Cache          — event-stream snapshot, bounded IPC fallback
          |
          v
    Save Original Focus   — remember current workspace and focused window
@@ -219,9 +236,10 @@ The Noctalia plugin keeps the Python daemon alive across normal setting changes:
 2. `Main.qml` coalesces rapid changes, writes `runtime-config.json`, and sends `SIGUSR1`
 3. `auto-tile.py` reloads that file from the event loop, outside signal-handler context
 4. Layout-affecting changes clear the column cache and redistribute via niri actions
-5. Timing-only changes (`debounceMs`, `maxEventsPerSecond`) update memory only and do not touch window layout
+5. Global `maxVisible` changes update niri's `default-column-width` and call `load-config-file`
+6. Timing-only changes (`debounceMs`, `maxEventsPerSecond`) update memory only and do not touch window layout
 
-Process restarts are limited to enable/disable, plugin teardown, and failure recovery. niri config reloads are intentionally not used in the live settings path because all required layout operations are available through native `niri msg action` IPC.
+Process restarts are limited to enable/disable, plugin teardown, and failure recovery. niri config reloads are used only for the new-window default width; column resizing itself remains native `niri msg action` IPC.
 
 ### Multi-Workspace Redistribution
 
@@ -236,11 +254,16 @@ When a window event triggers redistribution:
 
 ### Event Filtering
 
-The script maintains a set of known window IDs. When `WindowOpenedOrChanged` fires:
-- If the window ID is **new** -> trigger redistribution
-- If the window ID **already exists** -> it's just a title change, skip
+The script maintains a set of known window IDs and an event-stream mirror of current windows. When events arrive:
+- `WindowOpenedOrChanged` with a new ID triggers the open path
+- `WindowsChanged` is used as a fallback when niri reports the window list before the open event
+- `WindowLayoutsChanged` updates cached layout positions without forcing a resize by itself
+- `WindowFocusChanged` keeps focus restoration fast without an extra IPC query
+- repeated title changes for known IDs are skipped
 
 This prevents the flickering that would occur with apps like Firefox that fire `WindowOpenedOrChanged` on every tab switch or page load.
+
+If a newly opened window has not received a workspace or column position yet, the daemon schedules a bounded retry. That prevents the common race where a window opens at niri's default size and only resizes after the next focus event.
 
 ### Width Calculation
 
