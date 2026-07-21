@@ -9,12 +9,13 @@ IPC unless explicitly requested.
 
 ## Runtime
 
-- `service.luau` owns the niri event stream, debounce, redistribution, and
+- `niri-auto-tile/service.luau` owns the niri event stream, debounce, redistribution, and
   shared `division` state.
-- `widget.luau` displays the selected division and toggles the panel.
-- `panel.luau` selects and persists a division from 1 through 4.
-- `plugin.toml` declares the three entries and the external `niri` dependency.
-- `translations/` contains only strings used by the widget and panel.
+- `niri-auto-tile/widget.luau` displays the selected division and toggles the panel.
+- `niri-auto-tile/panel.luau` selects and persists a division from 1 through 4.
+- `niri-auto-tile/plugin.toml` declares the three entries and the external `niri` dependency.
+- `niri-auto-tile/translations/` contains only strings used by the widget and panel.
+- `catalog.toml` exposes the plugin through Noctalia Git sources.
 
 Entries run in isolated VMs. Share plain values through `noctalia.state` and
 persist only under `noctalia.pluginDataDir()`.
@@ -23,14 +24,14 @@ persist only under `noctalia.pluginDataDir()`.
 
 ```bash
 lua test_service.lua
-noctalia plugins lint .
+noctalia plugins lint niri-auto-tile
 ```
 
-Keep `service.luau` compatible with standard Lua syntax so its pure logic can
+Keep `niri-auto-tile/service.luau` compatible with standard Lua syntax so its pure logic can
 be loaded by the small test without a Noctalia runtime.
 
 ## Distribution
 
-During the v2 testing period, publish changes only to
-`pir0c0pter0/niri-auto-tile`. Do not submit the plugin to a Noctalia registry
-or open a registry pull request until explicitly requested.
+During the v2 testing period, publish changes only to the repository's Git
+source. Do not submit the plugin to a Noctalia registry or open a registry pull
+request until explicitly requested.

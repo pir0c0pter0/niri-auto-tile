@@ -1,4 +1,4 @@
-local logic = dofile("service.luau")
+local logic = dofile("niri-auto-tile/service.luau")
 
 assert(logic.normalizeDivision("4") == 4)
 assert(logic.normalizeDivision("0") == 4)

@@ -27,19 +27,12 @@ screen. With more columns, each keeps `100 / division` percent width.
 `niri` is listed as an external plugin dependency. Noctalia may display
 “Requires: niri”; this is informational, not an installation error.
 
-## Install from this repository
+## Installation
 
-Until testing is complete, the plugin is available only from this repository
-and is not published in the official Noctalia plugin registry.
-
-Clone it inside a parent directory that Noctalia can use as a local source:
+Add this repository as a Git source and enable the plugin:
 
 ```bash
-mkdir -p ~/Projects/noctalia-plugins-dev
-git clone https://github.com/pir0c0pter0/niri-auto-tile \
-  ~/Projects/noctalia-plugins-dev/niri-auto-tile
-noctalia msg plugins source add niri-auto-tile-dev path \
-  ~/Projects/noctalia-plugins-dev
+noctalia msg plugins source add niri-auto-tile git https://github.com/pir0c0pter0/niri-auto-tile
 noctalia msg plugins enable pir0c0pter0/niri-auto-tile
 ```
 
@@ -76,7 +69,7 @@ noctalia msg panel-toggle pir0c0pter0/niri-auto-tile:panel
 
 ```bash
 lua test_service.lua
-noctalia plugins lint .
+noctalia plugins lint niri-auto-tile
 ```
 
 The runtime is entirely Luau. There is no standalone daemon, legacy IPC,
