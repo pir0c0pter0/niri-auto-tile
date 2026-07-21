@@ -33,9 +33,12 @@ assert(math.abs(sum(logic.widths(3, 4)) - 100) < 0.000001)
 local columns = {
     { index = 0 }, { index = 1 }, { index = 2 }, { index = 3 }, { index = 4 },
 }
-assert(logic.anchorIndex(columns, 3, 4) == 3)
-assert(logic.anchorIndex(columns, 3, 2) == 1)
-assert(logic.anchorIndex({ columns[1], columns[2], columns[3] }, 3, 2) == 1)
+local first, last = logic.visibleRange(columns, 3, 4)
+assert(first == 3 and last == 5)
+first, last = logic.visibleRange(columns, 3, 2)
+assert(first == 1 and last == 3)
+first, last = logic.visibleRange({ columns[1], columns[2] }, 3, 1)
+assert(first == 1 and last == 2)
 
 local known = {}
 local redistribute, verify = logic.shouldRedistribute({

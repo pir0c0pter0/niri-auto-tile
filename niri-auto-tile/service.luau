@@ -24,16 +24,18 @@ function logic.widths(columnCount, division)
     return result
 end
 
-function logic.anchorIndex(columns, division, focusedColumnIndex)
-    if #columns <= logic.normalizeDivision(division) or focusedColumnIndex == nil then
-        return 1
-    end
-    for index, column in ipairs(columns) do
-        if column.index == focusedColumnIndex then
-            return math.max(1, index - logic.normalizeDivision(division) + 1)
+function logic.visibleRange(columns, division, focusedColumnIndex)
+    local visible = logic.normalizeDivision(division)
+    local first = 1
+    if #columns > visible and focusedColumnIndex ~= nil then
+        for index, column in ipairs(columns) do
+            if column.index == focusedColumnIndex then
+                first = math.max(1, index - visible + 1)
+                break
+            end
         end
     end
-    return 1
+    return first, math.min(#columns, first + visible - 1)
 end
 
 local function topology(window, previous)
@@ -206,10 +208,12 @@ local function buildCommand(windows)
                 .. " && " .. action("set-column-width " .. widths[index] .. "%"))
         end
 
-        local anchor = workspace.columns[logic.anchorIndex(
-            workspace.columns, division, workspace.focusedColumnIndex)]
+        local first, last = logic.visibleRange(
+            workspace.columns, division, workspace.focusedColumnIndex)
+        local anchor = workspace.columns[first]
         if anchor then
             table.insert(commands, action("focus-window --id " .. anchor.windowId))
+            table.insert(commands, action("focus-window --id " .. workspace.columns[last].windowId))
             table.insert(commands, action("center-visible-columns"))
         end
     end
