@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.3 - 2026-07-21
+
+### Fixed
+
+- Pull the full visible column group into the viewport after windows open or close.
+
 ## 2.0.2 - 2026-07-21
 
 ### Fixed
