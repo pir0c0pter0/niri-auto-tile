@@ -114,16 +114,17 @@ function logic.shouldRedistribute(event, knownIds)
     local closed = type(event) == "table" and event.WindowClosed or nil
     if type(closed) == "table" and tonumber(closed.id) then
         knownIds[tonumber(closed.id)] = nil
-        return true
+        return true, true
     end
 
     local changed = type(event) == "table" and event.WindowOpenedOrChanged or nil
     local window = type(changed) == "table" and changed.window or nil
     local id, nextTopology = topology(window, type(window) == "table" and knownIds[tonumber(window.id)])
     if id then
+        local opened = knownIds[id] == nil
         local different = not sameTopology(knownIds[id], nextTopology)
         knownIds[id] = nextTopology
-        return different
+        return different, opened
     end
 
     local allChanged = type(event) == "table" and event.WindowsChanged or nil
@@ -139,17 +140,20 @@ function logic.shouldRedistribute(event, knownIds)
         end
 
         local different = false
+        local openedOrClosed = false
         for itemId, itemTopology in pairs(nextIds) do
+            openedOrClosed = openedOrClosed or knownIds[itemId] == nil
             different = different or not sameTopology(knownIds[itemId], itemTopology)
         end
         for itemId in pairs(knownIds) do
+            openedOrClosed = openedOrClosed or nextIds[itemId] == nil
             different = different or not nextIds[itemId]
             knownIds[itemId] = nil
         end
         for itemId, itemTopology in pairs(nextIds) do
             knownIds[itemId] = itemTopology
         end
-        return different
+        return different, openedOrClosed
     end
 
     local layoutsChanged = type(event) == "table" and event.WindowLayoutsChanged or nil
@@ -235,8 +239,10 @@ local function startStream()
 
     if not noctalia.runStream("niri msg -j event-stream", function(line)
         local event = noctalia.json.decode(line)
-        if event and logic.shouldRedistribute(event, knownIds) then
+        local shouldRedistribute, verify = logic.shouldRedistribute(event, knownIds)
+        if shouldRedistribute then
             debounceTicks = 3
+            rerun = rerun or verify
         end
     end) then
         noctalia.log("failed to start niri event stream")

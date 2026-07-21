@@ -38,24 +38,26 @@ assert(logic.anchorIndex(columns, 3, 2) == 1)
 assert(logic.anchorIndex({ columns[1], columns[2], columns[3] }, 3, 2) == 1)
 
 local known = {}
-assert(logic.shouldRedistribute({
+local redistribute, verify = logic.shouldRedistribute({
     WindowOpenedOrChanged = { window = {
         id = 10, workspace_id = 1, is_floating = false,
         layout = { pos_in_scrolling_layout = { 0, 0 } },
     } },
-}, known))
+}, known)
+assert(redistribute and verify)
 assert(not logic.shouldRedistribute({
     WindowOpenedOrChanged = { window = {
         id = 10, workspace_id = 1, is_floating = false, title = "new title",
         layout = { pos_in_scrolling_layout = { 0, 0 } },
     } },
 }, known))
-assert(logic.shouldRedistribute({
+redistribute, verify = logic.shouldRedistribute({
     WindowOpenedOrChanged = { window = {
         id = 10, workspace_id = 2, is_floating = false,
         layout = { pos_in_scrolling_layout = { 0, 0 } },
     } },
-}, known))
+}, known)
+assert(redistribute and not verify)
 assert(logic.shouldRedistribute({
     WindowLayoutsChanged = { changes = {
         { 10, { pos_in_scrolling_layout = { 1, 0 } } },
@@ -66,6 +68,14 @@ assert(not logic.shouldRedistribute({
         { 10, { pos_in_scrolling_layout = { 1, 0 }, tile_size = { 100, 100 } } },
     } },
 }, known))
-assert(logic.shouldRedistribute({ WindowClosed = { id = 10 } }, known))
+redistribute, verify = logic.shouldRedistribute({ WindowClosed = { id = 10 } }, known)
+assert(redistribute and verify)
+redistribute, verify = logic.shouldRedistribute({ WindowsChanged = { windows = {
+    { id = 11, workspace_id = 1, is_floating = false,
+        layout = { pos_in_scrolling_layout = { 0, 0 } } },
+} } }, known)
+assert(redistribute and verify)
+redistribute, verify = logic.shouldRedistribute({ WindowsChanged = { windows = {} } }, known)
+assert(redistribute and verify)
 
 print("service logic ok")
