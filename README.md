@@ -11,7 +11,9 @@ how many columns should be visible, then let the plugin continuously maintain a
 clean layout—without a separate daemon, manual resizing, or changes to your
 niri configuration.
 
-![Niri Auto Tile column selector](docs/column-layout.png)
+<p align="center">
+  <img src="docs/column-layout.png" alt="Niri Auto Tile column selector">
+</p>
 
 > [!IMPORTANT]
 > Version 2 is a Noctalia 5-only rewrite currently under testing. The previous
