@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.1 - 2026-07-21
+
+### Fixed
+
+- Keep every visible column group filling the viewport, including three-column layouts.
+- Redistribute after columns move between workspaces, stacks, or floating state.
+
 ## 2.0.0 - 2026-07-21
 
 Noctalia 5-only testing release. Not yet submitted to the official Noctalia
