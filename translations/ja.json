@@ -1,0 +1,6 @@
+{
+  "panel.title": "カラムレイアウト",
+  "panel.single": "1 カラム",
+  "panel.columns": "{count} カラム",
+  "bar.tooltip": "Auto-Tile: {count} カラム"
+}

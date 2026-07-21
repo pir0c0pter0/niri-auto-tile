@@ -1,0 +1,6 @@
+{
+  "panel.title": "Расположение столбцов",
+  "panel.single": "Один столбец",
+  "panel.columns": "{count} столбца",
+  "bar.tooltip": "Auto-Tile: {count} столбца"
+}

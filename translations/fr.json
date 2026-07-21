@@ -1,0 +1,6 @@
+{
+  "panel.title": "Disposition des colonnes",
+  "panel.single": "Une colonne",
+  "panel.columns": "{count} colonnes",
+  "bar.tooltip": "Auto-Tile : {count} colonnes"
+}

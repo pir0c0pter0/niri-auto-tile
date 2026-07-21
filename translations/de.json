@@ -1,0 +1,6 @@
+{
+  "panel.title": "Spaltenlayout",
+  "panel.single": "Eine Spalte",
+  "panel.columns": "{count} Spalten",
+  "bar.tooltip": "Auto-Tile: {count} Spalten"
+}

@@ -1,0 +1,6 @@
+{
+  "panel.title": "列布局",
+  "panel.single": "单列",
+  "panel.columns": "{count} 列",
+  "bar.tooltip": "Auto-Tile：{count} 列"
+}

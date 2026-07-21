@@ -1,0 +1,6 @@
+{
+  "panel.title": "열 레이아웃",
+  "panel.single": "1개 열",
+  "panel.columns": "{count}개 열",
+  "bar.tooltip": "Auto-Tile: {count}개 열"
+}

@@ -1,5 +1,28 @@
 # Changelog
 
+## 2.0.0 - 2026-07-21
+
+Noctalia 5-only testing release. Not yet submitted to the official Noctalia
+plugin registry.
+
+### Breaking
+
+- Discontinue the Noctalia 4/Python/QML line.
+- Drop compatibility with the old plugin ID, settings, IPC, and standalone CLI.
+- Do not migrate v1 configuration; version 2 starts with a global division of 4.
+
+### Changed
+
+- Migrate the plugin to Noctalia 5 plugin API 4 and the Luau runtime.
+- Replace the Python/QML daemon architecture with service, widget, and panel entries.
+- Keep only global 1–4 column selection, automatic redistribution, focus restoration, and persistence.
+
+### Removed
+
+- Remove standalone mode, legacy IPC/settings, per-workspace configuration, niri config editing, and runtime tuning controls.
+
+## Legacy Noctalia 4 line — discontinued
+
 ## 1.11.0 - 2026-05-22
 
 ### Added

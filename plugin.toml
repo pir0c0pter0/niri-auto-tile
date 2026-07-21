@@ -1,0 +1,27 @@
+id           = "pir0c0pter0/niri-auto-tile"
+name         = "Niri Auto Tile"
+version      = "2.0.0"
+plugin_api   = 4
+min_noctalia = "5.0.0"
+author       = "pir0c0pter0"
+license      = "MIT"
+icon         = "columns-3"
+description  = "Automatically redistributes niri columns when windows open or close."
+tags         = ["Bar", "Utility", "Niri"]
+dependencies = ["niri"]
+
+[[service]]
+id    = "service"
+entry = "service.luau"
+
+[[widget]]
+id    = "widget"
+entry = "widget.luau"
+
+[[panel]]
+id              = "panel"
+entry           = "panel.luau"
+width           = 360
+height          = 180
+placement       = "attached"
+open_near_click = true
