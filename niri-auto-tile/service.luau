@@ -16,17 +16,60 @@ function logic.widths(columnCount, division)
     end
 
     local visible = math.min(columnCount, logic.normalizeDivision(division))
-    local base = math.floor(100 / visible)
+    local width = 100 / visible
     local result = {}
     for index = 1, columnCount do
-        result[index] = base
+        result[index] = width
     end
-    result[columnCount] = result[columnCount] + 100 - base * visible
     return result
+end
+
+function logic.anchorIndex(columns, division, focusedColumnIndex)
+    if #columns <= logic.normalizeDivision(division) or focusedColumnIndex == nil then
+        return 1
+    end
+    for index, column in ipairs(columns) do
+        if column.index == focusedColumnIndex then
+            return math.max(1, index - logic.normalizeDivision(division) + 1)
+        end
+    end
+    return 1
+end
+
+local function topology(window, previous)
+    if type(window) ~= "table" then
+        return nil, nil
+    end
+
+    local id = tonumber(window.id)
+    if not id then
+        return nil, nil
+    end
+
+    local layout = window.layout
+    local position = type(layout) == "table" and layout.pos_in_scrolling_layout or nil
+    local floating = previous and previous.floating
+    if type(window.is_floating) == "boolean" then
+        floating = window.is_floating
+    end
+    return id, {
+        workspaceId = tonumber(window.workspace_id) or (previous and previous.workspaceId),
+        floating = floating,
+        columnIndex = type(position) == "table" and tonumber(position[1])
+            or (layout == nil and previous and previous.columnIndex),
+    }
+end
+
+local function sameTopology(a, b)
+    return a ~= nil and b ~= nil
+        and a.workspaceId == b.workspaceId
+        and a.floating == b.floating
+        and a.columnIndex == b.columnIndex
 end
 
 function logic.groupColumns(windows)
     local byWorkspace = {}
+    local focusedColumns = {}
     local focusedId = nil
 
     for _, window in ipairs(windows) do
@@ -43,6 +86,9 @@ function logic.groupColumns(windows)
         if not window.is_floating and workspaceId and windowId and columnIndex then
             byWorkspace[workspaceId] = byWorkspace[workspaceId] or {}
             byWorkspace[workspaceId][columnIndex] = byWorkspace[workspaceId][columnIndex] or windowId
+            if window.is_focused then
+                focusedColumns[workspaceId] = columnIndex
+            end
         end
     end
 
@@ -53,7 +99,11 @@ function logic.groupColumns(windows)
             table.insert(columns, { index = columnIndex, windowId = windowId })
         end
         table.sort(columns, function(a, b) return a.index < b.index end)
-        table.insert(workspaces, { id = workspaceId, columns = columns })
+        table.insert(workspaces, {
+            id = workspaceId,
+            columns = columns,
+            focusedColumnIndex = focusedColumns[workspaceId],
+        })
     end
     table.sort(workspaces, function(a, b) return a.id < b.id end)
 
@@ -69,13 +119,11 @@ function logic.shouldRedistribute(event, knownIds)
 
     local changed = type(event) == "table" and event.WindowOpenedOrChanged or nil
     local window = type(changed) == "table" and changed.window or nil
-    local id = type(window) == "table" and tonumber(window.id) or nil
+    local id, nextTopology = topology(window, type(window) == "table" and knownIds[tonumber(window.id)])
     if id then
-        if knownIds[id] then
-            return false
-        end
-        knownIds[id] = true
-        return true
+        local different = not sameTopology(knownIds[id], nextTopology)
+        knownIds[id] = nextTopology
+        return different
     end
 
     local allChanged = type(event) == "table" and event.WindowsChanged or nil
@@ -83,22 +131,41 @@ function logic.shouldRedistribute(event, knownIds)
     if type(windows) == "table" then
         local nextIds = {}
         for _, item in ipairs(windows) do
-            local itemId = type(item) == "table" and tonumber(item.id) or nil
+            local itemId, itemTopology = topology(
+                item, type(item) == "table" and knownIds[tonumber(item.id)])
             if itemId then
-                nextIds[itemId] = true
+                nextIds[itemId] = itemTopology
             end
         end
 
         local different = false
-        for itemId in pairs(nextIds) do
-            different = different or not knownIds[itemId]
+        for itemId, itemTopology in pairs(nextIds) do
+            different = different or not sameTopology(knownIds[itemId], itemTopology)
         end
         for itemId in pairs(knownIds) do
             different = different or not nextIds[itemId]
             knownIds[itemId] = nil
         end
-        for itemId in pairs(nextIds) do
-            knownIds[itemId] = true
+        for itemId, itemTopology in pairs(nextIds) do
+            knownIds[itemId] = itemTopology
+        end
+        return different
+    end
+
+    local layoutsChanged = type(event) == "table" and event.WindowLayoutsChanged or nil
+    local changes = type(layoutsChanged) == "table" and layoutsChanged.changes or nil
+    if type(changes) == "table" then
+        local different = false
+        for _, change in ipairs(changes) do
+            local id = type(change) == "table" and tonumber(change[1]) or nil
+            local current = id and knownIds[id] or nil
+            local layout = type(change) == "table" and change[2] or nil
+            local position = type(layout) == "table" and layout.pos_in_scrolling_layout or nil
+            local columnIndex = type(position) == "table" and tonumber(position[1]) or nil
+            if current and current.columnIndex ~= columnIndex then
+                current.columnIndex = columnIndex
+                different = true
+            end
         end
         return different
     end
@@ -135,9 +202,10 @@ local function buildCommand(windows)
                 .. " && " .. action("set-column-width " .. widths[index] .. "%"))
         end
 
-        local first = workspace.columns[1]
-        if first then
-            table.insert(commands, action("focus-window --id " .. first.windowId))
+        local anchor = workspace.columns[logic.anchorIndex(
+            workspace.columns, division, workspace.focusedColumnIndex)]
+        if anchor then
+            table.insert(commands, action("focus-window --id " .. anchor.windowId))
             table.insert(commands, action("center-visible-columns"))
         end
     end
@@ -195,9 +263,9 @@ redistribute = function(initialize)
 
         if initialize then
             for _, window in ipairs(windows) do
-                local id = type(window) == "table" and tonumber(window.id) or nil
+                local id, windowTopology = topology(window)
                 if id then
-                    knownIds[id] = true
+                    knownIds[id] = windowTopology
                 end
             end
             startStream()
