@@ -1,7 +1,7 @@
 [[plugin]]
 id = "pir0c0pter0/niri-auto-tile"
 name = "Niri Auto Tile"
-version = "2.0.1"
+version = "2.0.2"
 author = "pir0c0pter0"
 license = "MIT"
 icon = "columns-3"

@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.2 - 2026-07-21
+
+### Fixed
+
+- Verify the layout after every window open or close so the remaining columns fill the viewport.
+
 ## 2.0.1 - 2026-07-21
 
 ### Fixed
