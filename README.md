@@ -2,7 +2,7 @@
 
 > Automatic, balanced column layouts for **niri**, integrated directly into **Noctalia Shell 5**.
 
-[![Version](https://img.shields.io/badge/version-2.0.4-b5bd00)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.5-b5bd00)](CHANGELOG.md)
 [![Noctalia](https://img.shields.io/badge/Noctalia-5.0%2B-242424)](https://noctalia.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 

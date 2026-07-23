@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.5 - 2026-07-23
+
+### Fixed
+
+- Keep existing column widths and only recenter when the selected layout already accommodates every column.
+
 ## 2.0.4 - 2026-07-23
 
 ### Fixed
