@@ -32,7 +32,7 @@ that small, repetitive job automatically while respecting the way niri works.
 - **Stack-aware** — multiple windows stacked in one column count as one column.
 - **Floating-friendly** — floating windows are left untouched.
 - **Focus-safe** — restores the previously focused window after resizing.
-- **Workspace-aware** — redistributes tiled columns independently on every workspace.
+- **Workspace-aware** — redistributes only the affected active workspace on its output.
 - **Persistent** — remembers the selected layout across Noctalia restarts.
 - **Lightweight** — runs entirely in Noctalia's Luau plugin runtime.
 - **Localized** — includes English, Portuguese (Brazil), German, Spanish, French,
@@ -121,11 +121,12 @@ noctalia msg panel-toggle pir0c0pter0/niri-auto-tile:panel
 The plugin starts with Noctalia, reads niri's current window list, and listens
 to `niri msg -j event-stream`. After an open or close event, it:
 
-1. groups tiled windows by workspace and column;
-2. calculates the width for the selected visible-column limit;
-3. resizes one representative window per column;
-4. anchors and centers the visible columns; and
-5. restores the window that was focused before redistribution.
+1. selects the affected workspace when it is active on its output;
+2. groups its tiled windows by column;
+3. calculates the width for the selected visible-column limit;
+4. resizes one representative window per column;
+5. anchors and centers the visible columns; and
+6. restores the window that was focused before redistribution.
 
 Events are briefly coalesced to avoid repeated work during bursts, and another
 pass is queued if the layout changes while redistribution is already running.

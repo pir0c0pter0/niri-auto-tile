@@ -69,7 +69,24 @@ local function sameTopology(a, b)
         and a.columnIndex == b.columnIndex
 end
 
-function logic.groupColumns(windows)
+local function addWorkspace(workspaceIds, windowTopology)
+    if windowTopology and windowTopology.workspaceId then
+        workspaceIds[windowTopology.workspaceId] = true
+    end
+end
+
+function logic.activeWorkspaceIds(workspaces, affected)
+    local active = {}
+    for _, workspace in ipairs(workspaces) do
+        local id = tonumber(workspace.id)
+        if id and workspace.is_active and (affected == nil or affected[id]) then
+            active[id] = true
+        end
+    end
+    return active
+end
+
+function logic.groupColumns(windows, workspaceIds)
     local byWorkspace = {}
     local focusedColumns = {}
     local focusedId = nil
@@ -85,7 +102,8 @@ function logic.groupColumns(windows)
         local windowId = tonumber(window.id)
         local columnIndex = type(position) == "table" and tonumber(position[1]) or nil
 
-        if not window.is_floating and workspaceId and windowId and columnIndex then
+        if not window.is_floating and workspaceId and windowId and columnIndex
+                and (workspaceIds == nil or workspaceIds[workspaceId]) then
             byWorkspace[workspaceId] = byWorkspace[workspaceId] or {}
             byWorkspace[workspaceId][columnIndex] = byWorkspace[workspaceId][columnIndex] or windowId
             if window.is_focused then
@@ -115,18 +133,27 @@ end
 function logic.shouldRedistribute(event, knownIds)
     local closed = type(event) == "table" and event.WindowClosed or nil
     if type(closed) == "table" and tonumber(closed.id) then
-        knownIds[tonumber(closed.id)] = nil
-        return true, true
+        local id = tonumber(closed.id)
+        local affected = {}
+        addWorkspace(affected, knownIds[id])
+        knownIds[id] = nil
+        return next(affected) ~= nil, true, affected
     end
 
     local changed = type(event) == "table" and event.WindowOpenedOrChanged or nil
     local window = type(changed) == "table" and changed.window or nil
-    local id, nextTopology = topology(window, type(window) == "table" and knownIds[tonumber(window.id)])
+    local previous = type(window) == "table" and knownIds[tonumber(window.id)] or nil
+    local id, nextTopology = topology(window, previous)
     if id then
         local opened = knownIds[id] == nil
         local different = not sameTopology(knownIds[id], nextTopology)
+        local affected = {}
+        if different then
+            addWorkspace(affected, previous)
+            addWorkspace(affected, nextTopology)
+        end
         knownIds[id] = nextTopology
-        return different, opened
+        return different, opened, affected
     end
 
     local allChanged = type(event) == "table" and event.WindowsChanged or nil
@@ -143,25 +170,34 @@ function logic.shouldRedistribute(event, knownIds)
 
         local different = false
         local openedOrClosed = false
+        local affected = {}
         for itemId, itemTopology in pairs(nextIds) do
             openedOrClosed = openedOrClosed or knownIds[itemId] == nil
-            different = different or not sameTopology(knownIds[itemId], itemTopology)
+            if not sameTopology(knownIds[itemId], itemTopology) then
+                different = true
+                addWorkspace(affected, knownIds[itemId])
+                addWorkspace(affected, itemTopology)
+            end
         end
         for itemId in pairs(knownIds) do
             openedOrClosed = openedOrClosed or nextIds[itemId] == nil
-            different = different or not nextIds[itemId]
+            if not nextIds[itemId] then
+                different = true
+                addWorkspace(affected, knownIds[itemId])
+            end
             knownIds[itemId] = nil
         end
         for itemId, itemTopology in pairs(nextIds) do
             knownIds[itemId] = itemTopology
         end
-        return different, openedOrClosed
+        return different, openedOrClosed, affected
     end
 
     local layoutsChanged = type(event) == "table" and event.WindowLayoutsChanged or nil
     local changes = type(layoutsChanged) == "table" and layoutsChanged.changes or nil
     if type(changes) == "table" then
         local different = false
+        local affected = {}
         for _, change in ipairs(changes) do
             local id = type(change) == "table" and tonumber(change[1]) or nil
             local current = id and knownIds[id] or nil
@@ -171,9 +207,10 @@ function logic.shouldRedistribute(event, knownIds)
             if current and current.columnIndex ~= columnIndex then
                 current.columnIndex = columnIndex
                 different = true
+                addWorkspace(affected, current)
             end
         end
-        return different
+        return different, false, affected
     end
 
     return false
@@ -192,13 +229,15 @@ local busy = false
 local rerun = false
 local debounceTicks = nil
 local streamStarted = false
+local pendingWorkspaceIds = {}
+local verificationWorkspaceIds = {}
 
 local function action(command)
     return "(niri msg action " .. command .. " >/dev/null 2>&1)"
 end
 
-local function buildCommand(windows)
-    local workspaces, focusedId = logic.groupColumns(windows)
+local function buildCommand(windows, workspaceIds)
+    local workspaces, focusedId = logic.groupColumns(windows, workspaceIds)
     local commands = {}
 
     for _, workspace in ipairs(workspaces) do
@@ -218,7 +257,7 @@ local function buildCommand(windows)
         end
     end
 
-    if focusedId then
+    if #commands > 0 and focusedId then
         table.insert(commands, action("focus-window --id " .. focusedId))
     end
 
@@ -243,10 +282,15 @@ local function startStream()
 
     if not noctalia.runStream("niri msg -j event-stream", function(line)
         local event = noctalia.json.decode(line)
-        local shouldRedistribute, verify = logic.shouldRedistribute(event, knownIds)
+        local shouldRedistribute, verify, affected = logic.shouldRedistribute(event, knownIds)
         if shouldRedistribute then
+            for workspaceId in pairs(affected) do
+                pendingWorkspaceIds[workspaceId] = true
+                if verify then
+                    verificationWorkspaceIds[workspaceId] = true
+                end
+            end
             debounceTicks = 3
-            rerun = rerun or verify
         end
     end) then
         noctalia.log("failed to start niri event stream")
@@ -260,10 +304,24 @@ redistribute = function(initialize)
     end
     busy = true
 
-    if not noctalia.runAsync("niri msg -j windows", function(result)
-        local windows = result.exitCode == 0 and noctalia.json.decode(result.stdout) or nil
-        if type(windows) ~= "table" then
-            noctalia.log("failed to read niri windows: " .. (result.stderr or "unknown error"))
+    local affected = next(pendingWorkspaceIds) and pendingWorkspaceIds or nil
+    pendingWorkspaceIds = {}
+    if affected then
+        for workspaceId in pairs(affected) do
+            if verificationWorkspaceIds[workspaceId] then
+                pendingWorkspaceIds[workspaceId] = true
+                verificationWorkspaceIds[workspaceId] = nil
+                rerun = true
+            end
+        end
+    end
+
+    if not noctalia.runAsync("niri msg -j workspaces", function(workspaceResult)
+        local workspaces = workspaceResult.exitCode == 0
+            and noctalia.json.decode(workspaceResult.stdout) or nil
+        if type(workspaces) ~= "table" then
+            noctalia.log("failed to read niri workspaces: "
+                .. (workspaceResult.stderr or "unknown error"))
             if initialize then
                 startStream()
             end
@@ -271,30 +329,50 @@ redistribute = function(initialize)
             return
         end
 
-        if initialize then
-            for _, window in ipairs(windows) do
-                local id, windowTopology = topology(window)
-                if id then
-                    knownIds[id] = windowTopology
+        local activeWorkspaceIds = logic.activeWorkspaceIds(workspaces, affected)
+        if not noctalia.runAsync("niri msg -j windows", function(result)
+            local windows = result.exitCode == 0 and noctalia.json.decode(result.stdout) or nil
+            if type(windows) ~= "table" then
+                noctalia.log("failed to read niri windows: " .. (result.stderr or "unknown error"))
+                if initialize then
+                    startStream()
                 end
+                finishRedistribution()
+                return
             end
-            startStream()
-        end
 
-        local command = buildCommand(windows)
-        if command == "" then
-            finishRedistribution()
-        elseif not noctalia.runAsync(command, function(layoutResult)
-            if layoutResult.exitCode ~= 0 then
-                noctalia.log("niri redistribution failed: " .. (layoutResult.stderr or "unknown error"))
+            if initialize then
+                for _, window in ipairs(windows) do
+                    local id, windowTopology = topology(window)
+                    if id then
+                        knownIds[id] = windowTopology
+                    end
+                end
+                startStream()
             end
-            finishRedistribution()
+
+            local command = buildCommand(windows, activeWorkspaceIds)
+            if command == "" then
+                finishRedistribution()
+            elseif not noctalia.runAsync(command, function(layoutResult)
+                if layoutResult.exitCode ~= 0 then
+                    noctalia.log("niri redistribution failed: "
+                        .. (layoutResult.stderr or "unknown error"))
+                end
+                finishRedistribution()
+            end) then
+                noctalia.log("failed to start niri redistribution")
+                finishRedistribution()
+            end
         end) then
-            noctalia.log("failed to start niri redistribution")
+            noctalia.log("failed to query niri windows")
+            if initialize then
+                startStream()
+            end
             finishRedistribution()
         end
     end) then
-        noctalia.log("failed to query niri windows")
+        noctalia.log("failed to query niri workspaces")
         if initialize then
             startStream()
         end
