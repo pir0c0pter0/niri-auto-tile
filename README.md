@@ -2,7 +2,7 @@
 
 > Automatic, balanced column layouts for **niri**, integrated directly into **Noctalia Shell 5**.
 
-[![Version](https://img.shields.io/badge/version-2.0.1-b5bd00)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.0.4-b5bd00)](CHANGELOG.md)
 [![Noctalia](https://img.shields.io/badge/Noctalia-5.0%2B-242424)](https://noctalia.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -146,7 +146,7 @@ provide per-workspace rules, edit `niri` configuration, expose runtime tuning,
 or run as a standalone daemon. These were legacy version 1 capabilities and
 are not part of the Noctalia 5 rewrite.
 
-The current 2.0.1 release is distributed from this Git repository while live
+The current 2.0.4 release is distributed from this Git repository while live
 testing is completed; it has not yet been submitted to Noctalia's official
 plugin registry.
 

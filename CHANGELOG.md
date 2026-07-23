@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.0.4 - 2026-07-23
+
+### Fixed
+
+- Redistribute only the affected workspace when it is active on its output.
+
 ## 2.0.3 - 2026-07-21
 
 ### Fixed

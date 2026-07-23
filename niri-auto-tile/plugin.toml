@@ -1,6 +1,6 @@
 id           = "pir0c0pter0/niri-auto-tile"
 name         = "Niri Auto Tile"
-version      = "2.0.3"
+version      = "2.0.4"
 plugin_api   = 4
 min_noctalia = "5.0.0"
 author       = "pir0c0pter0"
