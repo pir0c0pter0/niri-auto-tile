@@ -49,12 +49,13 @@ The selected number is the target number of columns visible at once:
 | 3 | ~33% | Multi-app workflows |
 | 4 | 25% | Dense, wide-screen layouts |
 
-When fewer columns exist than the selected value, they expand to fill the
-screen. When more exist, each keeps the selected fraction of the output width,
-preserving niri's horizontal scrolling model.
+When the selected value is equal to or greater than the current column count,
+the plugin keeps the existing widths and only recenters the columns. When more
+columns exist, each keeps the selected fraction of the output width, preserving
+niri's horizontal scrolling model.
 
-For example, selecting **4** gives two columns 50% each, three columns roughly
-33% each, and four or more columns 25% each.
+For example, selecting **4** leaves up to four columns at their current widths.
+With five or more columns, each is set to 25%.
 
 ## Requirements
 

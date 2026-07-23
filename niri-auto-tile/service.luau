@@ -11,11 +11,11 @@ function logic.normalizeDivision(value)
 end
 
 function logic.widths(columnCount, division)
-    if columnCount < 1 then
+    local visible = logic.normalizeDivision(division)
+    if columnCount <= visible then
         return {}
     end
 
-    local visible = math.min(columnCount, logic.normalizeDivision(division))
     local width = 100 / visible
     local result = {}
     for index = 1, columnCount do
@@ -241,10 +241,10 @@ local function buildCommand(windows, workspaceIds)
     local commands = {}
 
     for _, workspace in ipairs(workspaces) do
-        local widths = logic.widths(#workspace.columns, division)
-        for index, column in ipairs(workspace.columns) do
+        for index, width in ipairs(logic.widths(#workspace.columns, division)) do
+            local column = workspace.columns[index]
             table.insert(commands, action("focus-window --id " .. column.windowId)
-                .. " && " .. action("set-column-width " .. widths[index] .. "%"))
+                .. " && " .. action("set-column-width " .. width .. "%"))
         end
 
         local first, last = logic.visibleRange(

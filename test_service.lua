@@ -30,13 +30,12 @@ local active = logic.activeWorkspaceIds({
 }, { [7] = true, [8] = true })
 assert(active[7] and not active[8] and not active[9])
 
-assert(logic.widths(2, 4)[1] == 50)
-assert(logic.widths(4, 4)[1] == 25)
+assert(#logic.widths(2, 4) == 0)
+assert(#logic.widths(4, 4) == 0)
 local thirds = logic.widths(5, 3)
 for first = 1, 3 do
     assert(math.abs(sum(thirds, first, first + 2) - 100) < 0.000001)
 end
-assert(math.abs(sum(logic.widths(3, 4)) - 100) < 0.000001)
 
 local columns = {
     { index = 0 }, { index = 1 }, { index = 2 }, { index = 3 }, { index = 4 },
