@@ -26,16 +26,18 @@ end
 
 function logic.visibleRange(columns, division, focusedColumnIndex)
     local visible = logic.normalizeDivision(division)
-    local first = 1
-    if #columns > visible and focusedColumnIndex ~= nil then
-        for index, column in ipairs(columns) do
-            if column.index == focusedColumnIndex then
-                first = math.max(1, index - visible + 1)
-                break
-            end
+    if #columns <= visible then
+        return 1, #columns
+    end
+
+    for index, column in ipairs(columns) do
+        if column.index == focusedColumnIndex then
+            local first = math.max(
+                1, math.min(index - math.floor(visible / 2), #columns - visible + 1))
+            return first, first + visible - 1
         end
     end
-    return first, math.min(#columns, first + visible - 1)
+    return nil, nil
 end
 
 local function topology(window, previous)
@@ -80,7 +82,7 @@ function logic.activeWorkspaceIds(workspaces, affected)
     for _, workspace in ipairs(workspaces) do
         local id = tonumber(workspace.id)
         if id and workspace.is_active and (affected == nil or affected[id]) then
-            active[id] = true
+            active[id] = tonumber(workspace.active_window_id) or true
         end
     end
     return active
@@ -89,6 +91,8 @@ end
 function logic.groupColumns(windows, workspaceIds)
     local byWorkspace = {}
     local focusedColumns = {}
+    local activeColumns = {}
+    local activeWindowIds = {}
     local focusedId = nil
 
     for _, window in ipairs(windows) do
@@ -109,6 +113,11 @@ function logic.groupColumns(windows, workspaceIds)
             if window.is_focused then
                 focusedColumns[workspaceId] = columnIndex
             end
+            local activeId = workspaceIds and workspaceIds[workspaceId]
+            if type(activeId) == "number" and activeId == windowId then
+                activeColumns[workspaceId] = columnIndex
+                activeWindowIds[workspaceId] = windowId
+            end
         end
     end
 
@@ -122,7 +131,8 @@ function logic.groupColumns(windows, workspaceIds)
         table.insert(workspaces, {
             id = workspaceId,
             columns = columns,
-            focusedColumnIndex = focusedColumns[workspaceId],
+            focusedColumnIndex = focusedColumns[workspaceId] or activeColumns[workspaceId],
+            activeWindowId = activeWindowIds[workspaceId],
         })
     end
     table.sort(workspaces, function(a, b) return a.id < b.id end)
@@ -216,6 +226,45 @@ function logic.shouldRedistribute(event, knownIds)
     return false
 end
 
+local function action(command)
+    return "(niri msg action " .. command .. " >/dev/null 2>&1)"
+end
+
+function logic.buildCommand(windows, workspaceIds, division)
+    local workspaces, focusedId = logic.groupColumns(windows, workspaceIds)
+    local restoreId = focusedId
+    if not restoreId and #workspaces == 1 then
+        restoreId = workspaces[1].activeWindowId
+    end
+    if not restoreId then
+        return ""
+    end
+
+    local commands = {}
+    for _, workspace in ipairs(workspaces) do
+        local first, last = logic.visibleRange(
+            workspace.columns, division, workspace.focusedColumnIndex)
+        if first then
+            for index, width in ipairs(logic.widths(#workspace.columns, division)) do
+                local column = workspace.columns[index]
+                table.insert(commands, action("focus-window --id " .. column.windowId)
+                    .. " && " .. action("set-column-width " .. width .. "%"))
+            end
+
+            table.insert(commands, action("focus-window --id "
+                .. workspace.columns[first].windowId))
+            table.insert(commands, action("focus-window --id "
+                .. workspace.columns[last].windowId))
+            table.insert(commands, action("center-visible-columns"))
+        end
+    end
+
+    if #commands > 0 then
+        table.insert(commands, action("focus-window --id " .. restoreId))
+    end
+    return table.concat(commands, "; ")
+end
+
 if noctalia == nil then
     return logic
 end
@@ -231,38 +280,6 @@ local debounceTicks = nil
 local streamStarted = false
 local pendingWorkspaceIds = {}
 local verificationWorkspaceIds = {}
-
-local function action(command)
-    return "(niri msg action " .. command .. " >/dev/null 2>&1)"
-end
-
-local function buildCommand(windows, workspaceIds)
-    local workspaces, focusedId = logic.groupColumns(windows, workspaceIds)
-    local commands = {}
-
-    for _, workspace in ipairs(workspaces) do
-        for index, width in ipairs(logic.widths(#workspace.columns, division)) do
-            local column = workspace.columns[index]
-            table.insert(commands, action("focus-window --id " .. column.windowId)
-                .. " && " .. action("set-column-width " .. width .. "%"))
-        end
-
-        local first, last = logic.visibleRange(
-            workspace.columns, division, workspace.focusedColumnIndex)
-        local anchor = workspace.columns[first]
-        if anchor then
-            table.insert(commands, action("focus-window --id " .. anchor.windowId))
-            table.insert(commands, action("focus-window --id " .. workspace.columns[last].windowId))
-            table.insert(commands, action("center-visible-columns"))
-        end
-    end
-
-    if #commands > 0 and focusedId then
-        table.insert(commands, action("focus-window --id " .. focusedId))
-    end
-
-    return table.concat(commands, "; ")
-end
 
 local function finishRedistribution()
     busy = false
@@ -351,7 +368,7 @@ redistribute = function(initialize)
                 startStream()
             end
 
-            local command = buildCommand(windows, activeWorkspaceIds)
+            local command = logic.buildCommand(windows, activeWorkspaceIds, division)
             if command == "" then
                 finishRedistribution()
             elseif not noctalia.runAsync(command, function(layoutResult)
