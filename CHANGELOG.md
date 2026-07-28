@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.6 - 2026-07-28
+
+### Fixed
+
+- Keep the active tiled window as centered as possible after redistribution.
+- Avoid jumping to the first visible columns while niri's focus state settles after a window closes.
+
 ## 2.0.5 - 2026-07-23
 
 ### Fixed

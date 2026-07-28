@@ -147,7 +147,7 @@ provide per-workspace rules, edit `niri` configuration, expose runtime tuning,
 or run as a standalone daemon. These were legacy version 1 capabilities and
 are not part of the Noctalia 5 rewrite.
 
-The current 2.0.4 release is distributed from this Git repository while live
+The current 2.0.6 release is distributed from this Git repository while live
 testing is completed; it has not yet been submitted to Noctalia's official
 plugin registry.
 
