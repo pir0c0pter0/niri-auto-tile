@@ -43,14 +43,15 @@ local function occurrences(value, needle)
 end
 
 local function endsWith(value, suffix)
-    return value:sub(-#suffix) == suffix
+    local actions = value:gsub('; exit "%$status"$', "")
+    return actions:sub(-#suffix) == suffix
 end
 
 local function focusAction(id)
-    return "(niri msg action focus-window --id " .. id .. " >/dev/null 2>&1)"
+    return "(niri msg action focus-window --id " .. id .. " >/dev/null) || status=1"
 end
 
-local centerAction = "(niri msg action center-visible-columns >/dev/null 2>&1)"
+local centerAction = "(niri msg action center-visible-columns >/dev/null) || status=1"
 
 assert(logic.normalizeDivision("4") == 4)
 assert(logic.normalizeDivision("0") == 4)
@@ -215,5 +216,111 @@ redistribute, verify = logic.shouldRedistribute({ WindowsChanged = { windows = {
 assert(redistribute and verify)
 redistribute, verify = logic.shouldRedistribute({ WindowsChanged = { windows = {} } }, known)
 assert(redistribute and verify)
+
+-- Validate every input consistently, including values from shared state.
+assert(logic.normalizeDivision(nil) == 4)
+for _, value in ipairs({ false, true, {}, "invalid", 0, 5, 1.5, "2.5" }) do
+    assert(logic.normalizeDivision(value) == 4)
+end
+for value = 1, 4 do
+    assert(logic.normalizeDivision(value) == value)
+    assert(logic.normalizeDivision(tostring(value)) == value)
+end
+
+local status
+command, status = logic.buildCommand(windowsFor(2, 20, 1, 20), { [1] = 1 }, 4)
+assert(command == "" and status == "focus-changed")
+local inconsistent = windowsFor(1, 1, 2)
+append(inconsistent, windowsFor(2, 20, 1, 20))
+command, status = logic.buildCommand(inconsistent, { [1] = 1 }, 4)
+assert(command == "" and status == "focus-changed")
+command, status = logic.buildCommand(windowsFor(1, 1, 2), { [1] = 99 }, 4)
+assert(command == "" and status == "focus-changed")
+command, status = logic.buildCommand({}, { [1] = true }, 4)
+assert(command == "" and status == "empty")
+
+-- A floating effective focus has the same policy on either side of the visible limit.
+for _, count in ipairs({ 1, 4, 5, 8 }) do
+    for _, panelFocused in ipairs({ false, true }) do
+        local windows = windowsFor(1, 1, count)
+        table.insert(windows, { id = 99, workspace_id = 1,
+            is_floating = true, is_focused = not panelFocused })
+        command, status = logic.buildCommand(windows, { [1] = 99 }, 4)
+        assert(command == "" and status == "floating")
+        windows[#windows].is_focused = false
+        windows[1].is_focused = true
+        command, status = logic.buildCommand(windows, { [1] = 99 }, 4)
+        assert(status == "ready" and not command:find("--id 99", 1, true))
+    end
+end
+
+known = {}
+local function changed(window)
+    return logic.shouldRedistribute({ WindowOpenedOrChanged = { window = window } }, known)
+end
+redistribute, verify, affected = changed({ id = 99, workspace_id = 1, is_floating = true })
+assert(not redistribute and not verify and next(affected) == nil and known[99])
+redistribute, verify = changed({ id = 99, workspace_id = 2, is_floating = true })
+assert(not redistribute and not verify and known[99].workspaceId == 2)
+redistribute, verify = logic.shouldRedistribute({ WindowLayoutsChanged = { changes = {
+    { 99, { pos_in_scrolling_layout = { 2, 0 } } },
+} } }, known)
+assert(not redistribute and not verify)
+redistribute, verify = logic.shouldRedistribute({ WindowClosed = { id = 99 } }, known)
+assert(not redistribute and not verify and known[99] == nil)
+redistribute, verify = logic.shouldRedistribute({ WindowsChanged = { windows = {
+    { id = 99, workspace_id = 1, is_floating = true },
+} } }, known)
+assert(not redistribute and not verify)
+redistribute, verify = logic.shouldRedistribute({ WindowsChanged = { windows = {} } }, known)
+assert(not redistribute and not verify and next(known) == nil)
+
+-- Missing topology is not evidence of floating; both transition directions affect tiling.
+redistribute, verify, affected = changed({ id = 1, workspace_id = 1 })
+assert(redistribute and verify and affected[1])
+redistribute, verify, affected = changed({ id = 1, workspace_id = 1, is_floating = false,
+    layout = { pos_in_scrolling_layout = { 0, 0 } } })
+assert(redistribute and not verify and affected[1])
+redistribute, verify, affected = changed({ id = 1, workspace_id = 2, is_floating = true })
+assert(redistribute and not verify and affected[1] and not affected[2])
+redistribute, verify, affected = changed({ id = 1, workspace_id = 3, is_floating = false,
+    layout = { pos_in_scrolling_layout = { 1, 0 } } })
+assert(redistribute and not verify and not affected[2] and affected[3])
+redistribute, verify, affected = logic.shouldRedistribute({ WindowsChanged = { windows = {
+    { id = 1, workspace_id = 3, is_floating = true },
+} } }, known)
+assert(redistribute and not verify and affected[3])
+
+-- Output activation and global focus are distinct; neither changes the input snapshot.
+local live = {
+    { id = 1, output = "DP-1", is_active = true, is_focused = true, active_window_id = 11 },
+    { id = 2, output = "DP-2", is_active = true, is_focused = false },
+    { id = 3, output = "DP-2", is_active = false, is_focused = false },
+}
+local updated = logic.workspaceEvent(live, { WorkspaceActivated = { id = 3, focused = false } })
+assert(updated[1].is_focused and updated[1].is_active)
+assert(not updated[2].is_active and updated[3].is_active)
+assert(live[2].is_active and not live[3].is_active)
+updated = logic.workspaceEvent(updated, { WorkspaceActivated = { id = 2, focused = true } })
+assert(not updated[1].is_focused and updated[1].is_active)
+assert(updated[2].is_focused and updated[2].is_active and not updated[3].is_active)
+updated = logic.workspaceEvent(updated, { WorkspaceActiveWindowChanged = {
+    workspace_id = 1, active_window_id = 12,
+} })
+assert(updated[1].active_window_id == 12 and live[1].active_window_id == 11)
+updated = logic.workspaceEvent(updated, { WorkspaceActiveWindowChanged = { workspace_id = 1 } })
+assert(updated[1].active_window_id == nil)
+assert(logic.workspaceEvent(updated, { WindowFocusChanged = { id = 12 } }) == nil)
+local moved = { { id = 2, output = "DP-1", name = "code", is_active = true, is_focused = true } }
+assert(logic.workspaceEvent(updated, { WorkspacesChanged = { workspaces = moved } }) == moved)
+
+assert(logic.validPreferences({ version = 1, session = "socket", byId = { ["2"] = 2 },
+    byName = { code = 3 } }))
+for _, invalid in ipairs({ {}, { version = 2, byId = {}, byName = {} },
+        { version = 1, byId = { [1] = 2 }, byName = {} },
+        { version = 1, byId = {}, byName = { code = "2" } },
+        { version = 1, byId = {}, byName = { code = 5 } } }) do
+    assert(not logic.validPreferences(invalid))
+end
 
 print("service logic ok")

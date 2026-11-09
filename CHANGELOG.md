@@ -1,5 +1,32 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Keep a separate division per workspace and show each monitor's active workspace value in its bar widget; changing focus only updates the indicator.
+- Persist workspace divisions across Noctalia restarts, with named-workspace restoration across compositor sessions and safe migration of the legacy default.
+- Add Reapply and session-only Pause/Resume controls, with keyboard-accessible buttons.
+- Identify the target workspace in the panel; expose independent save, layout, and event-stream warnings.
+- Add isolated asynchronous runtime, UI, and shell failure tests without extra dependencies.
+
+### Fixed
+
+- Preserve the latest manual layout request while other workspace events or layout operations are in progress, without redirecting it to another workspace.
+- Reject inconsistent focus snapshots with one bounded retry, and invalidate queries predating a pause even after a quick resume.
+- Consistently skip redistribution while a floating window is focused, and ignore events that affect only floating windows.
+- Retry failed event-stream launches with a bounded backoff and prevent old queries from overwriting the stream's topology cache.
+- Preserve command failures and stderr while still attempting final focus restoration; report timeouts and truncated query responses.
+- Keep layout errors visible after pausing or an inapplicable request without hiding the current request's result.
+- Validate divisions consistently and preserve temporary preferences and save warnings across panel reopening; reselecting the current number retries saving.
+- Preserve preferences when workspaces gain or change names, without automatically overwriting unreadable or malformed preference files.
+- Avoid redundant UI updates when event-stream error state is already clear.
+
+### Changed
+
+- Update all ten translations and the panel screenshot for the new controls.
+- Keep the second layout verification pass: available geometry does not prove that viewport framing is already correct.
+
 ## 2.0.8 - 2026-11-09
 
 ### Documentation
