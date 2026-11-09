@@ -1,5 +1,14 @@
 # Changelog
 
+## 2.0.8 - 2026-11-09
+
+### Documentation
+
+- Clarify focused-workspace behavior, global division defaults, redistribution triggers, and niri subprocess usage.
+- Document Git-source updates, local-copy precedence, and Noctalia configuration file locations.
+- Update contributor and distribution guides to reflect current versioning and GitHub release policy.
+- No runtime changes from 2.0.7.
+
 ## 2.0.7 - 2026-11-09
 
 ### Fixed
