@@ -2,8 +2,9 @@
 
 ## Versioning and commits
 
-Use [Semantic Versioning](https://semver.org/) from the current `2.0.1`
-baseline and Conventional Commit messages for every new commit.
+Use [Semantic Versioning](https://semver.org/) from the current version recorded
+in `niri-auto-tile/plugin.toml` and `catalog.toml`, and Conventional Commit
+messages for every new commit.
 
 Commit types:
 

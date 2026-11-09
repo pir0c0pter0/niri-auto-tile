@@ -26,8 +26,8 @@ Niri's scrolling layout is flexible, but keeping a predictable number of
 columns visible can require frequent manual resizing. Niri Auto Tile handles
 that small, repetitive job automatically while respecting the way niri works.
 
-- **Automatic redistribution** — reacts to real window open and close events.
-- **Balanced widths** — visible columns share the output width evenly.
+- **Automatic redistribution** — reacts to window open/close events and changes to workspace, column, or floating state.
+- **Balanced widths** — each tiled column uses the selected fraction of the output width.
 - **One-click control** — choose a 1, 2, 3, or 4-column layout from the bar.
 - **Stack-aware** — multiple windows stacked in one column count as one column.
 - **Floating-friendly** — floating windows are left untouched.
@@ -54,6 +54,10 @@ regardless of the column count. For example, selecting **4** sets each column to
 25%, including when there are four or fewer columns. Additional columns remain
 accessible through niri's horizontal scrolling.
 
+The preference is global and defaults to **4**, but each redistribution changes
+only the focused workspace. Other monitors and unfocused workspaces retain
+their current widths. Switching focus alone does not trigger redistribution.
+
 ## Requirements
 
 - [Noctalia Shell](https://noctalia.dev/) 5.0 or newer
@@ -75,7 +79,9 @@ noctalia msg plugins enable pir0c0pter0/niri-auto-tile
 
 ### 2. Add the widget to your bar
 
-Add the widget definition and its ID to a bar in Noctalia's `settings.toml`:
+Use Noctalia's bar settings to add the **Niri Auto Tile** widget, or add the
+widget definition and its ID to your existing bar configuration. GUI-managed
+overrides live in `~/.local/state/noctalia/settings.toml` by default:
 
 ```toml
 [widget.niri-auto-tile]
@@ -86,7 +92,10 @@ center = ["date", "clock", "niri-auto-tile"]
 ```
 
 Keep any widgets already present in your bar list; the example only shows where
-`niri-auto-tile` fits.
+`niri-auto-tile` fits. Merge into existing tables instead of duplicating them.
+For a hand-written setup, use `~/.config/noctalia/config.toml`; GUI overrides
+take precedence. These paths respect Noctalia's configured directory overrides
+and the XDG environment variables. See [Noctalia's configuration guide](https://docs.noctalia.dev/noctalia/configuration/).
 
 ### 3. Validate and reload Noctalia
 
@@ -98,15 +107,33 @@ noctalia msg config-reload
 The bar now shows the column icon and the active division. Click it to open the
 selector.
 
+## Updating
+
+For the Git source installed above, fetch the latest version and reload its
+enabled plugin with:
+
+```bash
+noctalia msg plugins update niri-auto-tile
+noctalia msg plugins list
+```
+
+Use your source's name if you chose a different one during installation.
+
+A hand-installed copy under `~/.local/share/noctalia/plugins/niri-auto-tile/`
+takes precedence over Git sources and must be updated separately. Updating the
+Git source does not replace that local copy. See [Noctalia's local development guide](https://docs.noctalia.dev/noctalia/plugins/development/workflow/).
+
 ## Usage
 
 1. Click the Niri Auto Tile widget in the Noctalia bar.
 2. Select a layout from **1** to **4** columns.
 3. Open or close tiled windows normally.
 
-The new selection is applied immediately, saved to the plugin data directory,
-and reused after Noctalia restarts. Title changes and other updates to an
-existing window do not trigger unnecessary redistribution.
+Changing the selection applies it immediately to the focused workspace, saves
+it to the plugin data directory, and reuses it after Noctalia restarts. Selecting
+the already-active value does not force another redistribution. Title changes
+alone do not trigger redistribution; moving windows between workspaces or
+columns and changing their floating state can trigger it.
 
 You can also open or close the panel externally:
 
@@ -117,7 +144,8 @@ noctalia msg panel-toggle pir0c0pter0/niri-auto-tile:panel
 ## What happens behind the scenes
 
 The plugin starts with Noctalia, reads niri's current window list, and listens
-to `niri msg -j event-stream`. After an open or close event, it:
+to `niri msg -j event-stream`. After an open/close event or a change to a window's
+workspace, column, or floating state, it:
 
 1. selects the affected workspace only when it is focused;
 2. groups its tiled windows by column;
@@ -144,14 +172,17 @@ provide per-workspace rules, edit `niri` configuration, expose runtime tuning,
 or run as a standalone daemon. These were legacy version 1 capabilities and
 are not part of the Noctalia 5 rewrite.
 
-The current 2.0.7 release is distributed from this Git repository while live
-testing is completed; it has not yet been submitted to Noctalia's official
-plugin registry.
+The current 2.0.7 version is distributed from this Git repository while live
+testing is completed. Published [GitHub releases](https://github.com/pir0c0pter0/niri-auto-tile/releases)
+are also available; the plugin has not been submitted to the Noctalia plugin
+registry.
 
 ## Development
 
-The plugin is implemented in Luau and has no separate runtime process. Run the
-logic checks and Noctalia lint before submitting changes:
+The plugin runs inside Noctalia's Luau runtime and launches `niri msg` commands
+for compositor IPC, including a long-lived event stream. It needs no separate
+Python daemon or build step. Run the logic checks and Noctalia lint before
+submitting changes:
 
 ```bash
 lua test_service.lua

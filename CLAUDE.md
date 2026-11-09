@@ -20,6 +20,14 @@ IPC unless explicitly requested.
 Entries run in isolated VMs. Share plain values through `noctalia.state` and
 persist only under `noctalia.pluginDataDir()`.
 
+The global division defaults to 4. Every tiled column in the focused workspace
+gets `100 / division` percent width, even when there are fewer columns than the
+selected division. Other workspaces, including visible ones on other monitors,
+are not redistributed. Focus changes alone do not trigger a pass.
+
+The service uses `niri msg` subprocesses for queries, actions, and its event
+stream; it does not run a separate Python daemon.
+
 ## Checks
 
 ```bash
@@ -32,6 +40,9 @@ be loaded by the small test without a Noctalia runtime.
 
 ## Distribution
 
-During the v2 testing period, publish changes only to the repository's Git
-source. Do not submit the plugin to a Noctalia registry or open a registry pull
-request until explicitly requested.
+During the v2 testing period, distribute through the repository's Git source.
+GitHub Releases are published only when explicitly requested. Do not submit the
+plugin to a Noctalia registry or open a registry pull request until explicitly
+requested. Follow [AGENTS.md](AGENTS.md) for release commits and annotated tags,
+including documentation-only pushes, and [PUBLISHING.md](PUBLISHING.md) for
+distribution status.
