@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.0.7 - 2026-11-09
+
+### Fixed
+
+- Apply the selected column width even when the workspace has no more columns than the selected division, including 25% widths for four columns.
+- Redistribute only the focused workspace, leaving other monitors untouched and allowing layout selection while the panel owns keyboard focus.
+
 ## 2.0.6 - 2026-07-28
 
 ### Fixed
