@@ -32,7 +32,7 @@ that small, repetitive job automatically while respecting the way niri works.
 - **Stack-aware** — multiple windows stacked in one column count as one column.
 - **Floating-friendly** — floating windows are left untouched.
 - **Focus-safe** — restores the previously focused window after resizing.
-- **Workspace-aware** — redistributes only the affected active workspace on its output.
+- **Workspace-aware** — redistributes only the focused workspace, leaving other monitors untouched.
 - **Persistent** — remembers the selected layout across Noctalia restarts.
 - **Lightweight** — runs entirely in Noctalia's Luau plugin runtime.
 - **Localized** — includes English, Portuguese (Brazil), German, Spanish, French,
@@ -42,20 +42,17 @@ that small, repetitive job automatically while respecting the way niri works.
 
 The selected number is the target number of columns visible at once:
 
-| Selection | Width with enough columns | Typical use |
+| Selection | Column width | Typical use |
 |---:|---:|---|
 | 1 | 100% | Focused, single-column work |
 | 2 | 50% | Editor plus terminal or browser |
 | 3 | ~33% | Multi-app workflows |
 | 4 | 25% | Dense, wide-screen layouts |
 
-When the selected value is equal to or greater than the current column count,
-the plugin keeps the existing widths and only recenters the columns. When more
-columns exist, each keeps the selected fraction of the output width, preserving
-niri's horizontal scrolling model.
-
-For example, selecting **4** leaves up to four columns at their current widths.
-With five or more columns, each is set to 25%.
+The selected fraction is applied to every tiled column in the focused workspace,
+regardless of the column count. For example, selecting **4** sets each column to
+25%, including when there are four or fewer columns. Additional columns remain
+accessible through niri's horizontal scrolling.
 
 ## Requirements
 
@@ -122,7 +119,7 @@ noctalia msg panel-toggle pir0c0pter0/niri-auto-tile:panel
 The plugin starts with Noctalia, reads niri's current window list, and listens
 to `niri msg -j event-stream`. After an open or close event, it:
 
-1. selects the affected workspace when it is active on its output;
+1. selects the affected workspace only when it is focused;
 2. groups its tiled windows by column;
 3. calculates the width for the selected visible-column limit;
 4. resizes one representative window per column;

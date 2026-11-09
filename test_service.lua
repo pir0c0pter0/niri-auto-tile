@@ -68,11 +68,22 @@ assert(#workspaces == 1 and #workspaces[1].columns == 2)
 assert(workspaces[1].focusedColumnIndex == 1)
 
 local active = logic.activeWorkspaceIds({
-    { id = 7, output = "DP-1", is_active = true, active_window_id = "3" },
+    { id = 7, output = "DP-1", is_active = true, is_focused = true, active_window_id = "3" },
     { id = 8, output = "DP-1", is_active = false },
     { id = 9, output = "HDMI-A-1", is_active = true },
 }, { [7] = true, [8] = true })
 assert(active[7] == 3 and not active[8] and not active[9])
+
+active = logic.activeWorkspaceIds({
+    { id = 7, is_active = true, is_focused = true, active_window_id = 3 },
+    { id = 9, is_active = true, is_focused = false, active_window_id = 5 },
+})
+assert(active[7] == 3 and not active[9])
+active = logic.activeWorkspaceIds({
+    { id = 7, is_active = true, is_focused = true, active_window_id = 3 },
+    { id = 9, is_active = true, is_focused = false, active_window_id = 5 },
+}, { [9] = true })
+assert(next(active) == nil)
 
 workspaces = logic.groupColumns({
     { id = 1, workspace_id = 7, is_floating = false,
@@ -92,8 +103,18 @@ workspaces = logic.groupColumns({
 }, { [7] = 1 })
 assert(workspaces[1].focusedColumnIndex == 1 and workspaces[1].activeWindowId == 1)
 
-assert(#logic.widths(2, 4) == 0)
-assert(#logic.widths(4, 4) == 0)
+for division = 1, 4 do
+    for count = 1, 5 do
+        local widths = logic.widths(count, division)
+        assert(#widths == count)
+        for _, width in ipairs(widths) do
+            assert(width == 100 / division)
+        end
+    end
+end
+assert(#logic.widths(0, 4) == 0)
+local fourColumns = logic.buildCommand(windowsFor(1, 1, 4, 2), { [1] = 2 }, 4)
+assert(occurrences(fourColumns, "set-column-width 25") == 4)
 local thirds = logic.widths(5, 3)
 for first = 1, 3 do
     assert(math.abs(sum(thirds, first, first + 2) - 100) < 0.000001)
@@ -142,6 +163,17 @@ assert(endsWith(command,
 multiple = windowsFor(1, 101, 5)
 append(multiple, windowsFor(2, 201, 5))
 assert(logic.buildCommand(multiple, { [1] = 102, [2] = 202 }, 3) == "")
+
+-- The panel owns keyboard focus; only its focused workspace may be resized.
+active = logic.activeWorkspaceIds({
+    { id = 1, is_active = true, is_focused = false, active_window_id = 102 },
+    { id = 2, is_active = true, is_focused = true, active_window_id = 202 },
+})
+command = logic.buildCommand(multiple, active, 3)
+assert(occurrences(command, "set-column-width") == 5)
+assert(occurrences(command, centerAction) == 1)
+assert(not command:find("focus-window --id 10", 1, true))
+assert(endsWith(command, focusAction(202)))
 
 local known = {}
 local redistribute, verify, affected = logic.shouldRedistribute({

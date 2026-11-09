@@ -12,10 +12,6 @@ end
 
 function logic.widths(columnCount, division)
     local visible = logic.normalizeDivision(division)
-    if columnCount <= visible then
-        return {}
-    end
-
     local width = 100 / visible
     local result = {}
     for index = 1, columnCount do
@@ -81,7 +77,7 @@ function logic.activeWorkspaceIds(workspaces, affected)
     local active = {}
     for _, workspace in ipairs(workspaces) do
         local id = tonumber(workspace.id)
-        if id and workspace.is_active and (affected == nil or affected[id]) then
+        if id and workspace.is_focused and (affected == nil or affected[id]) then
             active[id] = tonumber(workspace.active_window_id) or true
         end
     end
