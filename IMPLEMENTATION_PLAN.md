@@ -3,7 +3,8 @@
 Data: 2026-11-09. Base: versão 2.0.8, commit `8efab8d`.
 Estado: código implementado, com escopo por workspace confirmado durante a
 execução; testes automatizados e validação isolada concluídos. Pendências de
-hardware e publicação estão registradas abaixo. Sem commits ou push.
+hardware e publicação estão registradas abaixo. Implementação e versão 2.1.0
+registradas em commits locais; sem push.
 
 ## Ajuste de escopo confirmado: divisão por workspace
 
@@ -453,7 +454,7 @@ Resultados da implementação e limites da validação:
 | Compositor e workspaces | Passou em output virtual único | Cage headless → niri 26.04 → Noctalia 5.4, XDG e D-Bus privados; divisões 1–4, pilhas, foco flutuante com 4/5 colunas, falhas e recuperação, workspace A=4/B=2, foco sem redimensionamento e reinício do Noctalia |
 | Dois monitores físicos | Pendente | Dois widgets/output e migração de workspace cobertos por mocks; não foi alterada a sessão real do usuário |
 | Compatibilidade Noctalia 5.0/API 4 | APIs conferidas na fonte; execução na 5.4 | `luau_host.cpp`, `plugin_bindings.cpp` e reconciliador UI da tag v5.0.0-beta.4; interface atual testada na 5.4, sem teste de binário 5.0 |
-| Release | Não solicitado/executado | Manifesto e catálogo permanecem 2.0.8; changelog em Unreleased; sem commits, tags ou push |
+| Release | Local 2.1.0 | Manifesto e catálogo sincronizados; changelog datado; commit de implementação separado do release e tag anotada local; sem push |
 
 A captura `docs/column-layout.png` veio da interface real isolada. Na sessão,
 cinco colunas tiveram larguras 1240/612/402/298 px para divisões 1/2/3/4 em
@@ -476,16 +477,16 @@ requests`, `fix: retry failed event stream startup`, `fix: report layout command
 failures`, `feat: add reapply layout action`, `feat: add temporary tiling pause`.
 Não criar um commit gigante de refatoração nem separar o teste do fix que cobre.
 
-Base atual 2.0.8: uma entrega só de correções seleciona 2.0.9; a entrega com
-reaplicação/pausa seleciona 2.1.0. Se tudo sair junto, usar apenas 2.1.0. Confirmar
-a versão real ao implementar; não reservar versões nem alterá-las neste plano.
+Partindo de 2.0.8, a entrega conjunta com preferências por workspace, reaplicação
+e pausa selecionou 2.1.0. A implementação foi registrada separadamente do commit
+`chore(release): v2.1.0`, com tag anotada local correspondente.
 
 Antes de um push futuro, seguir AGENTS.md: versão igual em `plugin.toml` e
 `catalog.toml`, seção datada no changelog, commit separado `chore(release): vX.Y.Z`
 e tag anotada correspondente. Atualizar referências de versão do README. No
 período de testes v2, publicar commit de release/tag; sem GitHub Release nem
-registro Noctalia, salvo pedido explícito. Este planejamento não executa commits,
-tags, push ou publicação.
+registro Noctalia, salvo pedido explícito. Nesta entrega foram solicitados commit
+e atualização local; não foi feito push nem publicação remota.
 Na preparação futura, verificar que a tag anotada aponta exatamente ao commit
 de release e que manifesto, catálogo, README e changelog concordam.
 

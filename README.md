@@ -2,7 +2,7 @@
 
 > Automatic, balanced column layouts for **niri**, integrated directly into **Noctalia Shell 5**.
 
-[![Version](https://img.shields.io/badge/version-2.0.8-b5bd00)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-2.1.0-b5bd00)](CHANGELOG.md)
 [![Noctalia](https://img.shields.io/badge/Noctalia-5.0%2B-242424)](https://noctalia.dev/)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 
@@ -223,7 +223,7 @@ plugin cannot guarantee recovery from that later failure. If automatic updates
 stop, reload the plugin or restart Noctalia; manual **Reapply** remains available
 when niri accepts commands.
 
-The current 2.0.8 version is distributed from this Git repository while live
+The current 2.1.0 version is distributed from this Git repository while live
 testing is completed. Published [GitHub releases](https://github.com/pir0c0pter0/niri-auto-tile/releases)
 are also available; the plugin has not been submitted to the Noctalia plugin
 registry.
