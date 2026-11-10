@@ -24,5 +24,6 @@
   "status.saveError": "Preferencia no guardada. Sigue vigente en esta sesión; pulsa el número seleccionado para volver a guardarla.",
   "status.streamError": "Eventos de ventanas no disponibles. Usa Reaplicar con la automatización activa; la supervisión no está confirmada.",
   "panel.workspace": "Espacio de trabajo: {workspace}",
-  "panel.noWorkspace": "Esperando un espacio de trabajo en este monitor."
+  "panel.noWorkspace": "Esperando un espacio de trabajo en este monitor.",
+  "panel.positionPersistence": "Tras reiniciar, esta preferencia usa la posición en este monitor. Cambiar el orden puede cambiar la asociación."
 }

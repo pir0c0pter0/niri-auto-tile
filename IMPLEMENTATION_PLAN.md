@@ -1,5 +1,35 @@
 # Plano de correções e melhorias do Niri Auto Tile
 
+## Atualização de escopo — persistência após reboot (2026-11-10)
+
+Esta etapa substitui a restrição anterior de não associar preferências à posição.
+O usuário escolheu restaurar workspaces sem nome pelo monitor e posição após
+reiniciar o compositor, aceitando que reordenação ou mudanças de monitores possam
+trocar essa associação. Dentro da sessão, o ID continua prevalecendo; entre
+sessões, nomes têm prioridade e workspaces sem nome usam `output` + `idx`.
+
+| Frente | Responsável | Critério de aceite | Estado |
+| --- | --- | --- | --- |
+| Persistência | Agente de storage | Ler v1; salvar posições isoladas por monitor; preservar preferências após falha de leitura; gravar por substituição atômica | Implementado e revisado |
+| Restauração | Agente de layout | Aplicar preferência restaurada na primeira visita elegível, sem roubar foco nem reaplicar em toda troca | Implementado e revisado |
+| Interface e documentação | Agente de UI | Explicar persistência por posição; traduções consistentes nos dez idiomas | Integrado e validado |
+| Integração e revisão | Orquestrador + revisor independente | Testes de lógica/runtime, lint, traduções e revisão final sem falhas relevantes | Aprovado |
+
+Validação desta etapa: `lua test_service.lua`, 62 grupos em
+`lua test_runtime.lua`, lint com zero erros/avisos, `git diff --check` e 27
+chaves/placeholders consistentes nos dez catálogos. A revisão independente
+encontrou e confirmou as correções para remoção do nome de um workspace e
+ativação mais recente descartada por callback antigo; ambas têm regressões.
+Um probe no Noctalia 5.4 real, Cage/Niri headless e XDG/D-Bus privados validou
+o codec JSON v2, nomes Unicode, escrita temporária/rename e leitura por outro
+processo. Esse probe não executou o serviço final nem simulou queda de energia.
+
+Escopo: divisão uniforme de 1–4 colunas por workspace; sem restauração de janelas,
+edição da configuração do Niri ou alteração de preferências reais do usuário.
+O usuário autorizou commit, push na `main`, publicação do GitHub Release e
+atualização da instalação local como versão 2.2.0. A validação física de reboot e
+dois monitores continua necessária; mocks não comprovam o comportamento visual.
+
 Data: 2026-11-09. Base: versão 2.0.8, commit `8efab8d`.
 Estado: código implementado, com escopo por workspace confirmado durante a
 execução; testes automatizados e validação isolada concluídos. Pendências de

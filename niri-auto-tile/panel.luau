@@ -74,6 +74,11 @@ local function render()
             text = noctalia.tr(statusKeys[status] or "status.idle"),
         }),
     }
+    if workspace and (type(workspace.name) ~= "string" or workspace.name == "") then
+        table.insert(details, ui.label({
+            key = "persistence", maxWidth = 360, text = noctalia.tr("panel.positionPersistence"),
+        }))
+    end
     if (noctalia.state.get("saveErrors") or {})[id] == true then
         table.insert(details, ui.label({
             key = "save-error", maxWidth = 360, text = noctalia.tr("status.saveError"),

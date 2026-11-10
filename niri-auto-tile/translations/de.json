@@ -24,5 +24,6 @@
   "status.saveError": "Einstellung nicht gespeichert. Sie gilt für diese Sitzung; zum erneuten Speichern die ausgewählte Zahl anklicken.",
   "status.streamError": "Fensterereignisse nicht verfügbar. Bei aktiver Automatik „Neu anwenden“ nutzen; die Ereignisüberwachung ist nicht bestätigt.",
   "panel.workspace": "Arbeitsbereich: {workspace}",
-  "panel.noWorkspace": "Warte auf einen Arbeitsbereich auf diesem Monitor."
+  "panel.noWorkspace": "Warte auf einen Arbeitsbereich auf diesem Monitor.",
+  "panel.positionPersistence": "Nach einem Neustart gilt diese Einstellung für die Position auf diesem Monitor. Eine neue Reihenfolge kann die Zuordnung ändern."
 }

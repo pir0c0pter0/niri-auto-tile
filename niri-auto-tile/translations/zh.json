@@ -24,5 +24,6 @@
   "status.saveError": "偏好未保存，但在本次会话中仍然有效。请点击已选中的数字重试保存。",
   "status.streamError": "窗口事件不可用。请在自动调整启用时使用“重新应用”；尚未确认事件监控正常。",
   "panel.workspace": "工作区：{workspace}",
-  "panel.noWorkspace": "正在等待此显示器上的工作区。"
+  "panel.noWorkspace": "正在等待此显示器上的工作区。",
+  "panel.positionPersistence": "重启后，此偏好按此显示器上的位置恢复。重新排序可能改变关联的工作区。"
 }

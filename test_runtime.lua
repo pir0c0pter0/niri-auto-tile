@@ -55,11 +55,20 @@ local function mock(options)
             if not m.readOK then return nil, "temporary read failure" end
             return path == "/mock-only/division" and m.disk or m.files[path]
         end,
+        fileExists = function(path) return m.files[path] ~= nil end,
         writeFile = function(path, value)
-            equal(path, "/mock-only/workspace-divisions.json", "legacy default is read-only")
+            equal(path, "/mock-only/workspace-divisions.json.tmp", "writes use a temporary file")
             m.writes[#m.writes + 1] = { path = path, value = value }
             if m.writeOK then m.files[path] = value; return true end
+            if m.partialWrite then m.files[path] = "partial JSON" end
             return false, "read-only test filesystem"
+        end,
+        renameFile = function(from, to)
+            equal(from, "/mock-only/workspace-divisions.json.tmp")
+            equal(to, "/mock-only/workspace-divisions.json")
+            if m.renameOK == false then return false, "test rename failure" end
+            m.files[to], m.files[from] = m.files[from], nil
+            return true
         end,
         state = { get = function(key) return m.state[key] end, set = m.set,
             watch = function(key, callback)
@@ -414,6 +423,23 @@ test("normalization is consistent at startup and watcher updates", function()
     equal(#fresh.writes, 0)
 end)
 
+test("panel explains positional persistence only for unnamed workspaces", function()
+    local m = mock({ state = { workspaces = {
+        { id = 1, idx = 1, output = "DP-1", is_active = true, is_focused = true },
+    } } })
+    local panel = m.load("panel", "DP-1")
+    equal(assert(find(panel.tree, "persistence")).text, "panel.positionPersistence")
+    m.state.workspaces[1].name = "coding"
+    m.set("workspaces", m.state.workspaces)
+    equal(find(panel.tree, "persistence"), nil)
+    m.state.workspaces[1].name = ""
+    m.set("workspaces", m.state.workspaces)
+    assert(find(panel.tree, "persistence"))
+    m.set("workspaces", {})
+    equal(find(panel.tree, "persistence"), nil)
+    equal(#m.writes, 0)
+end)
+
 test("failed save survives panel recreation and reselect only retries disk", function()
     local m = mock({ disk = "4" }):ready(); local panel = m.load("panel")
     m.writeOK = false; click(panel, "division-2"); m.drain()
@@ -423,7 +449,7 @@ test("failed save survives panel recreation and reselect only retries disk", fun
     local count = #m.layouts(); m.writeOK = true; click(panel, "division-2"); m.drain()
     equal(m.state.saveErrors["1"], false); equal(m.disk, "4"); equal(#m.layouts(), count)
     local saved = decode(m.files["/mock-only/workspace-divisions.json"])
-    equal(saved.byId["1"], 2); equal(saved.version, 1); equal(saved.session, "/mock/niri.sock")
+    equal(saved.byId["1"], 2); equal(saved.version, 2); equal(saved.session, "/mock/niri.sock")
     local restarted = mock({ disk = m.disk, files = m.files }):ready()
     equal(restarted.load("widget").text, "2")
 end)
@@ -623,7 +649,106 @@ test("shared temporary selection wins over stale disk on service reload", functi
     equal(m.load("widget").text, "3")
 end)
 
-test("same session restores IDs but new sessions restore only named workspaces", function()
+test("unnamed workspaces restore positions on independent monitors after reboot", function()
+    local m = dual(); m.workspaces[2].idx = 1
+    m.event({ WorkspacesChanged = { workspaces = m.workspaces } })
+    m.request(1, 1); m.request(3, 2); m.drain()
+    local saved = decode(m.files["/mock-only/workspace-divisions.json"])
+    equal(saved.byPosition["DP-1"]["1"], 1)
+    equal(saved.byPosition["HDMI-A-1"]["1"], 3)
+    local restarted = mock({ files = m.files, session = "/mock/reboot.sock" })
+    restarted.workspaces = copy(m.workspaces)
+    restarted.workspaces[1].id, restarted.workspaces[2].id = 8, 9
+    restarted.windows = append(windows(8, 11, 4, 11), windows(9, 21, 4))
+    restarted.ready()
+    equal(restarted.state.workspaceDivisions["8"], 1)
+    equal(restarted.state.workspaceDivisions["9"], 3)
+    equal(#restarted.writes, 0, "restore never rewrites disk")
+end)
+
+test("named preferences precede positions and missing positions use defaults", function()
+    local saved = encode({ version = 2, session = "old", byId = {}, byName = { coding = 2 },
+        byPosition = { ["DP-1"] = { ["1"] = 1 } } })
+    for _, row in ipairs({
+        { id = 8, name = "coding", idx = 1, output = "DP-1" },
+        { id = 8, name = "new-name", idx = 1, output = "DP-1" },
+        { id = 8, idx = 1 }, { id = 8, idx = 0, output = "DP-1" },
+        { id = 8, idx = 1.5, output = "DP-1" },
+    }) do
+        local m = mock({ files = { ["/mock-only/workspace-divisions.json"] = saved } })
+        row.is_active, row.is_focused = true, true
+        m.workspaces = { row }; m.windows = windows(8, 11, 4, 11); m.ready()
+        equal(m.state.workspaceDivisions["8"], row.name == "coding" and 2 or 4)
+    end
+end)
+
+test("position saves follow current slots without automatic writes on reorder", function()
+    local m = mock():ready(); m.request(2); m.drain()
+    local count = #m.writes
+    m.workspaces[1].idx = 2
+    m.event({ WorkspacesChanged = { workspaces = m.workspaces } }); m.drain()
+    equal(#m.writes, count)
+    equal(m.state.workspaceDivisions["1"], 2)
+    m.request(2); m.drain()
+    equal(decode(m.files["/mock-only/workspace-divisions.json"]).byPosition["DP-1"]["2"], 2)
+end)
+
+test("recovered reads preserve untouched preferences and temporary choices", function()
+    local saved = encode({ version = 1, session = "/mock/niri.sock",
+        byId = { ["1"] = 2, ["2"] = 3 }, byName = { coding = 2, chat = 3, absent = 4 } })
+    local m = mock({ files = { ["/mock-only/workspace-divisions.json"] = saved } })
+    m.workspaces[1].name = "coding"
+    m.workspaces[2] = { id = 2, name = "chat", idx = 2, output = "DP-1" }
+    m.readOK = false; m.ready()
+    equal(m.state.saveErrors["1"], true, "failed read must be visible")
+    m.request(1); m.drain()
+    equal(#m.writes, 0, "unread existing file must stay intact")
+    m.load("service"); m.drain()
+    m.readOK = true; m.request(1); m.drain()
+    local result = decode(m.files["/mock-only/workspace-divisions.json"])
+    equal(result.byName.coding, 1); equal(result.byName.chat, 3); equal(result.byName.absent, 4)
+    equal(result.byId["2"], 3); equal(m.state.workspaceDivisions["2"], 3)
+    equal(m.state.saveErrors["1"], false)
+end)
+
+test("legacy preferences migrate on explicit save and invalid positions stay untouched", function()
+    local legacy = encode({ version = 1, session = "old", byId = {}, byName = { coding = 2 }, byPosition = true })
+    local m = mock({ files = { ["/mock-only/workspace-divisions.json"] = legacy } })
+    m.workspaces[1].name = "coding"
+    m.workspaces[2] = { id = 2, idx = 2, output = "DP-1" }; m.ready()
+    equal(m.state.workspaceDivisions["1"], 2); equal(m.state.workspaceDivisions["2"], 4)
+    equal(#m.writes, 0)
+    m.request(2); m.drain()
+    local saved = decode(m.files["/mock-only/workspace-divisions.json"])
+    equal(saved.version, 2); assert(type(saved.byPosition) == "table")
+    for _, bad in ipairs({
+        { version = 2, byId = {}, byName = {}, byPosition = false },
+        { version = 2, byId = {}, byName = {}, byPosition = { ["DP-1"] = { ["0"] = 2 } } },
+        { version = 2, byId = {}, byName = {}, byPosition = { ["DP-1"] = { ["1"] = 5 } } },
+    }) do
+        local raw = encode(bad)
+        local invalid = mock({ files = { ["/mock-only/workspace-divisions.json"] = raw } }):ready()
+        equal(invalid.files["/mock-only/workspace-divisions.json"], raw)
+        equal(invalid.state.saveErrors["1"], true); equal(#invalid.writes, 0)
+    end
+end)
+
+test("failed temporary writes and replacement preserve the saved preferences", function()
+    for _, failure in ipairs({ "write", "rename" }) do
+        local m = mock():ready(); m.request(2); m.drain()
+        local saved = m.files["/mock-only/workspace-divisions.json"]
+        if failure == "write" then m.writeOK, m.partialWrite = false, true else m.renameOK = false end
+        m.request(3); m.drain()
+        equal(m.files["/mock-only/workspace-divisions.json"], saved, "original survives " .. failure)
+        equal(m.state.workspaceDivisions["1"], 3); equal(m.state.saveErrors["1"], true)
+        m.writeOK, m.renameOK = true, true
+        m.request(3); m.drain()
+        equal(decode(m.files["/mock-only/workspace-divisions.json"]).byId["1"], 3)
+        equal(m.state.saveErrors["1"], false)
+    end
+end)
+
+test("same session restores IDs and new sessions restore names and positions", function()
     local m = dual(); m.workspaces[2].name = "coding"
     m.event({ WorkspacesChanged = { workspaces = m.workspaces } }); m.request(3, 2); m.request(1, 1); m.drain()
     local saved = decode(m.files["/mock-only/workspace-divisions.json"])
@@ -631,7 +756,7 @@ test("same session restores IDs but new sessions restore only named workspaces",
     for _, session in ipairs({ "/mock/niri.sock", "/mock/new.sock", "" }) do
         local restarted = mock({ disk = "4", files = m.files, session = session })
         restarted.workspaces = copy(m.workspaces); restarted.ready()
-        equal(restarted.state.workspaceDivisions["1"], session == "/mock/niri.sock" and 1 or 4)
+        equal(restarted.state.workspaceDivisions["1"], 1)
         equal(restarted.state.workspaceDivisions["2"], 3)
         equal(#restarted.writes, 0, "restoration must not rewrite disk")
     end
@@ -649,6 +774,39 @@ test("renamed and newly named workspaces retain preferences across compositor se
         restarted.workspaces[1].id = 8; restarted.workspaces[1].name = "work"
         restarted.windows = windows(8, 11, 4, 11); restarted.ready()
         equal(restarted.state.workspaceDivisions["8"], 2, "name survives compositor restart")
+    end
+end)
+
+test("removing a saved workspace name preserves its division after reboot", function()
+    for _, newName in ipairs({ false, "" }) do
+        local m = mock(); m.workspaces[1].name = "coding"
+        m.ready(); m.request(2); m.drain(); m.commands = {}
+        local before = #m.writes
+        m.workspaces[1].name = newName or nil
+        m.event({ WorkspacesChanged = { workspaces = m.workspaces } }); m.drain()
+        equal(#m.writes, before + 1); equal(#m.layouts(), 0, "removing a name must not resize")
+        equal(decode(m.files["/mock-only/workspace-divisions.json"]).byPosition["DP-1"]["1"], 2)
+        local restarted = mock({ files = m.files, session = "/mock/reboot.sock" })
+        restarted.workspaces[1].id = 8; restarted.windows = windows(8, 11, 4, 11)
+        restarted.ready(); equal(restarted.state.workspaceDivisions["8"], 2)
+    end
+end)
+
+test("removing a name cannot overwrite unread preferences or save an unknown slot", function()
+    local disk = encode({ version = 1, session = "/mock/niri.sock", byId = { ["1"] = 2 },
+        byName = { coding = 2, absent = 3 } })
+    local unread = mock({ files = { ["/mock-only/workspace-divisions.json"] = disk } })
+    unread.workspaces[1].name = "coding"; unread.readOK = false; unread.ready()
+    unread.workspaces[1].name = nil
+    unread.event({ WorkspacesChanged = { workspaces = unread.workspaces } }); unread.drain()
+    equal(#unread.writes, 0); equal(unread.files["/mock-only/workspace-divisions.json"], disk)
+    equal(unread.state.saveErrors["1"], true)
+    for _, missing in ipairs({ "output", "idx" }) do
+        local m = mock(); m.workspaces[1].name = "coding"; m.ready(); m.request(2); m.drain()
+        local before = #m.writes
+        m.workspaces[1].name, m.workspaces[1][missing] = nil, nil
+        m.event({ WorkspacesChanged = { workspaces = m.workspaces } }); m.drain()
+        equal(#m.writes, before, "no automatic save for unknown " .. missing)
     end
 end)
 
@@ -801,6 +959,141 @@ if [ "$count" = "$FAIL_AT" ]; then printf 'fake niri failure %s\n' "$count" >&2;
     end)
     assert(os.execute("/bin/rm -rf -- " .. quote(directory)))
     assert(ok, err)
+end)
+
+local function restoredPair()
+    local saved = encode({ version = 1, session = "/mock/previous.sock",
+        byId = { ["1"] = 1, ["2"] = 4 }, byName = { coding = 2, chat = 3 } })
+    local m = mock({ session = "/mock/reboot.sock",
+        files = { ["/mock-only/workspace-divisions.json"] = saved } })
+    m.workspaces = {
+        { id = 8, idx = 1, name = "coding", output = "DP-1", is_active = true,
+            is_focused = true, active_window_id = 11 },
+        { id = 9, idx = 2, name = "chat", output = "DP-1", is_active = false,
+            is_focused = false, active_window_id = 21 },
+    }
+    m.windows = append(windows(8, 11, 4, 11), windows(9, 21, 4))
+    m.ready()
+    return m
+end
+local function activateRestored(m, id, floating)
+    for _, workspace in ipairs(m.workspaces) do
+        workspace.is_focused = workspace.id == id
+        workspace.is_active = workspace.id == id
+    end
+    for _, window in ipairs(m.windows) do
+        window.is_focused = window.id == (id == 8 and 11 or 21)
+        if window.is_focused then window.is_floating = floating == true end
+    end
+    m.event({ WorkspaceActivated = { id = id, focused = true } })
+end
+
+test("restored background workspace applies on first activation only", function()
+    local m = restoredPair()
+    equal(m.state.workspaceDivisions["9"], 3)
+    equal(#m.layouts(), 0, "background must remain untouched during startup")
+    activateRestored(m, 9); m.drain()
+    equal(#m.layouts(), 1); hasWidth(m.layouts()[1], "33.333")
+    assert(not m.layouts()[1]:find("--id 11", 1, true), "restoration touched another workspace")
+    equal(m.state.pendingRestores["9"], nil)
+    activateRestored(m, 8); m.drain(); activateRestored(m, 9); m.drain()
+    equal(#m.layouts(), 1, "normal focus must not reapply completed restoration")
+end)
+
+test("restored background preference survives service reload until applied", function()
+    local m = restoredPair()
+    equal(m.state.pendingRestores["9"], true)
+    m.load("service"); m.streams[1] = m.streams[#m.streams]; m.drain(); m.commands = {}
+    equal(m.state.pendingRestores["9"], true)
+    activateRestored(m, 9); m.drain()
+    equal(#m.layouts(), 1); hasWidth(m.layouts()[1], "33.333")
+    equal(m.state.pendingRestores["9"], nil)
+end)
+
+test("restoration waits through pause and retries failure on next activation", function()
+    local m = restoredPair()
+    m.set("paused", true); activateRestored(m, 9); m.drain()
+    equal(#m.layouts(), 0); equal(m.state.pendingRestores["9"], true)
+    m.set("paused", false); m.tick(); m.reply(); m.reply()
+    equal(#m.layouts(), 1)
+    m.reply({ exitCode = 1, stdout = "", stderr = "failed restoration" }); m.drain()
+    equal(m.state.pendingRestores["9"], true)
+    activateRestored(m, 8); m.drain(); activateRestored(m, 9); m.drain()
+    equal(#m.layouts(), 2); equal(m.state.pendingRestores["9"], nil)
+end)
+
+test("floating restored workspace waits for a tiled focus event", function()
+    local m = restoredPair()
+    activateRestored(m, 9, true); m.drain()
+    equal(#m.layouts(), 0); equal(m.state.pendingRestores["9"], true)
+    m.windows[5].is_floating = false
+    m.event({ WindowFocusChanged = { id = 21 } }); m.drain()
+    equal(#m.layouts(), 1); hasWidth(m.layouts()[1], "33.333")
+    equal(m.state.pendingRestores["9"], nil)
+end)
+
+test("restore focus events during a successful batch do not queue another batch", function()
+    local m = restoredPair()
+    activateRestored(m, 9); m.tick(4); m.reply(); m.reply()
+    equal(#m.layouts(), 1)
+    m.event({ WindowFocusChanged = { id = 21 } })
+    m.reply(); m.drain()
+    equal(#m.layouts(), 1)
+end)
+
+test("failed restoration ignores delayed focus events until workspace activation", function()
+    local m = restoredPair()
+    activateRestored(m, 9); m.tick(4); m.reply(); m.reply()
+    equal(#m.layouts(), 1)
+    m.event({ WindowFocusChanged = { id = 21 } })
+    m.reply({ exitCode = 1, stdout = "", stderr = "failed restoration" }); m.drain()
+    equal(#m.layouts(), 1, "failed batch must not retry its own focus events")
+    equal(m.state.pendingRestores["9"], true)
+    m.event({ WindowFocusChanged = { id = 21 } })
+    m.event({ WorkspaceActiveWindowChanged = { workspace_id = 9, active_window_id = 21 } })
+    m.drain(); equal(#m.layouts(), 1, "late focus events must not retry a failed batch")
+    activateRestored(m, 9); m.drain()
+    equal(#m.layouts(), 2); equal(m.state.pendingRestores["9"], nil)
+end)
+
+test("empty restored workspace keeps its pending layout until windows arrive", function()
+    local m = restoredPair()
+    while #m.windows > 4 do table.remove(m.windows) end
+    activateRestored(m, 9)
+    m.event({ WindowsChanged = { windows = m.windows } }); m.drain()
+    equal(#m.layouts(), 0); equal(m.state.pendingRestores["9"], true)
+    append(m.windows, windows(9, 21, 1, 21))
+    m.event({ WindowOpenedOrChanged = { window = m.windows[5] } }); m.drain()
+    assert(#m.layouts() > 0); hasWidth(m.layouts()[1], "33.333")
+    equal(m.state.pendingRestores["9"], nil)
+end)
+
+test("manual selection precedes pending restoration and old success cannot clear it", function()
+    local m = restoredPair()
+    activateRestored(m, 9); m.request(2, 9); m.drain()
+    equal(#m.layouts(), 1); hasWidth(m.layouts()[1], "50")
+    equal(m.state.pendingRestores["9"], nil)
+
+    m = restoredPair()
+    activateRestored(m, 9); m.tick(4); m.reply(); m.reply()
+    equal(#m.layouts(), 1); hasWidth(m.layouts()[1], "33.333")
+    m.request(2, 9); m.reply()
+    equal(m.state.pendingRestores["9"], true, "old batch cannot confirm newer preference")
+    m.drain(); equal(#m.layouts(), 2); hasWidth(m.layouts()[2], "50")
+    equal(m.state.pendingRestores["9"], nil)
+end)
+
+test("new restoration activation survives a superseded batch callback", function()
+    for _, division in ipairs({ 2, 1 }) do
+        local m = restoredPair()
+        activateRestored(m, 9); m.tick(4); m.reply(); m.reply()
+        equal(#m.layouts(), 1)
+        activateRestored(m, 8); m.request(division, 8); activateRestored(m, 9)
+        m.reply({ exitCode = 1, stdout = "", stderr = "old failure" }); m.drain()
+        equal(m.state.pendingRestores["9"], nil, "current restored workspace must still apply")
+        equal(#m.layouts(), 2, "new activation survives old callback")
+        hasWidth(m.layouts()[2], "33.333")
+    end
 end)
 
 for _, case in ipairs(cases) do

@@ -335,16 +335,43 @@ function logic.workspaceEvent(workspaces, event)
     return result
 end
 
+local function validDivisionMap(values)
+    if type(values) ~= "table" then return false end
+    for key, division in pairs(values) do
+        if type(key) ~= "string" or key == "" or type(division) ~= "number"
+                or division ~= logic.normalizeDivision(division) then
+            return false
+        end
+    end
+    return true
+end
+
+local function positionIndex(value)
+    local index = tonumber(value)
+    if index and index % 1 == 0 and index >= 1 and index <= 255 then
+        return tostring(index)
+    end
+end
+
+local function workspacePosition(workspace)
+    if type(workspace.output) == "string" and workspace.output ~= "" then
+        return workspace.output, positionIndex(workspace.idx)
+    end
+end
+
 function logic.validPreferences(value)
-    if type(value) ~= "table" or value.version ~= 1
-            or type(value.byId) ~= "table" or type(value.byName) ~= "table" then
+    if type(value) ~= "table" or (value.version ~= 1 and value.version ~= 2)
+            or not validDivisionMap(value.byId) or not validDivisionMap(value.byName) then
         return false
     end
-    for _, values in ipairs({ value.byId, value.byName }) do
-        for key, division in pairs(values) do
-            if type(key) ~= "string" or key == "" or type(division) ~= "number"
-                    or division ~= logic.normalizeDivision(division) then
+    if value.version == 2 then
+        if type(value.byPosition) ~= "table" then return false end
+        for output, positions in pairs(value.byPosition) do
+            if type(output) ~= "string" or output == "" or not validDivisionMap(positions) then
                 return false
+            end
+            for index in pairs(positions) do
+                if positionIndex(index) ~= index then return false end
             end
         end
     end
@@ -365,23 +392,49 @@ local preferencesPath = dataDir and dataDir .. "/workspace-divisions.json"
 local defaultDivision = logic.normalizeDivision(dataDir and noctalia.readFile(dataDir .. "/division"))
 local session = noctalia.getenv("NIRI_SOCKET")
 if type(session) ~= "string" or session == "" then session = nil end
-local rawPreferences = preferencesPath and noctalia.readFile(preferencesPath)
-local preferences = rawPreferences and decode(rawPreferences)
-local trustedPreferences = logic.validPreferences(preferences)
-local malformedPreferences = rawPreferences ~= nil and not trustedPreferences
-if malformedPreferences then noctalia.log("invalid workspace-divisions.json; using defaults") end
-if not logic.validPreferences(preferences) then
-    preferences = { version = 1, byId = {}, byName = {} }
+local function readPreferences(path)
+    if not path then return nil, "unreadable" end
+    local raw = noctalia.readFile(path)
+    if raw == nil then
+        return nil, noctalia.fileExists(path) and "unreadable" or "missing"
+    end
+    local value = decode(raw)
+    if not logic.validPreferences(value) then return nil, "invalid" end
+    if value.version == 1 then value.byPosition = {} end
+    value.version = 2
+    return value, "valid"
 end
+
+local preferences, readStatus = readPreferences(preferencesPath)
+local trustedPreferences = readStatus == "valid"
+local malformedPreferences = readStatus == "invalid"
+local unreadPreferences = readStatus == "unreadable"
+if malformedPreferences then noctalia.log("invalid workspace-divisions.json; using defaults") end
+if unreadPreferences then noctalia.log("failed to read workspace-divisions.json; using temporary defaults") end
+preferences = preferences or { version = 2, byId = {}, byName = {}, byPosition = {} }
 local divisions = {}
+local restoredWorkspaceIds = copy(noctalia.state.get("pendingRestores"))
 if session and preferences.session == session then
     divisions = copy(preferences.byId)
+    for key in pairs(divisions) do restoredWorkspaceIds[key] = true end
 end
 for key, value in pairs(noctalia.state.get("workspaceDivisions") or {}) do
     divisions[key] = logic.normalizeDivision(value)
+    restoredWorkspaceIds[key] = (noctalia.state.get("pendingRestores") or {})[key]
 end
+local unsavedDivisions = copy(noctalia.state.get("unsavedWorkspaceDivisions"))
 preferences.session = session or ""
 preferences.byId = divisions
+
+local function savedDivision(workspace)
+    if type(workspace.name) == "string" and workspace.name ~= "" then
+        return preferences.byName[workspace.name]
+    end
+    -- shortcut: unnamed preferences follow output slots; use persistent names when reordering matters.
+    local output, index = workspacePosition(workspace)
+    return index and (preferences.byPosition[output] or {})[index] or nil
+end
+
 noctalia.state.set("defaultDivision", defaultDivision)
 for key, value in pairs({ paused = false, streamError = false, workspaces = {},
         saveErrors = {}, layoutStatuses = {}, layoutErrors = {} }) do
@@ -422,21 +475,66 @@ for key, status in pairs(noctalia.state.get("layoutStatuses")) do
 end
 
 local function savePreferences(workspaceIds)
-    for _, workspace in ipairs(workspaces) do
-        if type(workspace.name) == "string" and workspace.name ~= "" then
-            preferences.byName[workspace.name] = divisions[tostring(workspace.id)]
-        end
+    for workspaceId in pairs(workspaceIds) do
+        local key = tostring(workspaceId)
+        unsavedDivisions[key] = divisions[key]
     end
+    noctalia.state.set("unsavedWorkspaceDivisions", copy(unsavedDivisions))
     local saveDir = noctalia.pluginDataDir()
     local savePath = saveDir and saveDir .. "/workspace-divisions.json"
-    local encodedOk, encoded = pcall(noctalia.json.encode, preferences)
     local ok, err = false, "data directory or JSON encoding unavailable"
-    if savePath and encodedOk and type(encoded) == "string" then
-        ok, err = noctalia.writeFile(savePath, encoded)
+    local canSave = savePath ~= nil
+    if canSave and not trustedPreferences then
+        local recovered, status = readPreferences(savePath)
+        canSave = status ~= "unreadable"
+        if recovered then
+            preferences = recovered
+            local recoveredIds = session and preferences.session == session and preferences.byId or {}
+            for _, workspace in ipairs(workspaces) do
+                local key = tostring(workspace.id)
+                if unsavedDivisions[key] == nil then
+                    local saved = recoveredIds[key] or savedDivision(workspace)
+                    if saved then divisions[key] = saved; restoredWorkspaceIds[key] = true end
+                end
+            end
+            for key, value in pairs(recoveredIds) do
+                if divisions[key] == nil then divisions[key] = value end
+            end
+            noctalia.state.set("workspaceDivisions", copy(divisions))
+            noctalia.state.set("pendingRestores", copy(restoredWorkspaceIds))
+        end
+        if not canSave then err = "existing workspace preferences are unreadable" end
+    end
+    if canSave then
+        preferences.version = 2
+        preferences.session = session or ""
+        preferences.byId = divisions
+        for _, workspace in ipairs(workspaces) do
+            local key = tostring(workspace.id)
+            if trustedPreferences or unsavedDivisions[key] ~= nil then
+                if type(workspace.name) == "string" and workspace.name ~= "" then
+                    preferences.byName[workspace.name] = divisions[key]
+                else
+                    local output, index = workspacePosition(workspace)
+                    if index then
+                        preferences.byPosition[output] = preferences.byPosition[output] or {}
+                        preferences.byPosition[output][index] = divisions[key]
+                    end
+                end
+            end
+        end
+        local encodedOk, encoded = pcall(noctalia.json.encode, preferences)
+        if encodedOk and type(encoded) == "string" then
+            ok, err = noctalia.writeFile(savePath .. ".tmp", encoded)
+            if ok then ok, err = noctalia.renameFile(savePath .. ".tmp", savePath) end
+        end
     end
     if ok then
         trustedPreferences = true
         malformedPreferences = false
+        unreadPreferences = false
+        unsavedDivisions = {}
+        noctalia.state.set("unsavedWorkspaceDivisions", {})
         local errors = {}
         for id in pairs(divisions) do errors[id] = false end
         noctalia.state.set("saveErrors", errors)
@@ -456,16 +554,22 @@ local function publishWorkspaces(rows)
     for _, workspace in ipairs(rows) do
         local key = tostring(workspace.id)
         if divisions[key] == nil then
-            divisions[key] = preferences.byName[workspace.name] or defaultDivision
+            local saved = savedDivision(workspace)
+            divisions[key] = saved or defaultDivision
+            if saved then restoredWorkspaceIds[key] = true end
         end
         local old = previous[workspace.id]
-        if old and old.name ~= workspace.name
-                and type(workspace.name) == "string" and workspace.name ~= "" then
-            renamed[workspace.id] = true
+        if old and old.name ~= workspace.name then
+            local named = type(workspace.name) == "string" and workspace.name ~= ""
+            local _, index = workspacePosition(workspace)
+            if named or (type(old.name) == "string" and old.name ~= "" and index) then
+                renamed[workspace.id] = true
+            end
         end
-        if malformedPreferences then setEntry("saveErrors", workspace.id, true) end
+        if malformedPreferences or unreadPreferences then setEntry("saveErrors", workspace.id, true) end
     end
     noctalia.state.set("workspaceDivisions", copy(divisions))
+    noctalia.state.set("pendingRestores", copy(restoredWorkspaceIds))
     noctalia.state.set("workspaces", rows)
     if next(renamed) then
         if trustedPreferences then
@@ -536,6 +640,9 @@ local function validEvent(event)
         or type(event.WindowFocusChanged) == "table"
 end
 
+local restoreRequests = {}
+local activationSerial = 0
+
 local function startStream()
     if streamStarted then return end
     streamStarted = noctalia.runStream("niri msg -j event-stream", function(line)
@@ -559,6 +666,21 @@ local function startStream()
             end
             if not pendingManual then debounceTicks = 3 end
         end
+        if not paused and (rows or event.WindowFocusChanged) then
+            local activated = event.WorkspaceActivated
+            if activated and activated.focused then activationSerial = activationSerial + 1 end
+            for workspaceId in pairs(logic.activeWorkspaceIds(workspaces)) do
+                local key = tostring(workspaceId)
+                if restoredWorkspaceIds[key]
+                        and ((noctalia.state.get("layoutStatuses") or {})[key] ~= "error"
+                            or (activated and activated.focused)) then
+                    restoreRequests[workspaceId] = activationSerial
+                end
+            end
+            if next(restoreRequests) and not pendingManual then
+                debounceTicks = debounceTicks or 0
+            end
+        end
     end)
     if streamStarted then
         streamRetryTicks = nil
@@ -577,12 +699,18 @@ end
 local function finishRedistribution(pass, status, verify)
     busy = false
     local key = pass.workspaceId and tostring(pass.workspaceId)
+    if pass.workspaceId and current(pass)
+            and (restoreRequests[pass.workspaceId] or 0) <= (pass.activationSerial or 0) then
+        restoreRequests[pass.workspaceId] = nil
+    end
     local latest = key and workspaceSerials[key] == pass.serial
     if status == "error" and (latest or pass.division ~= nil) then
         setEntry("layoutErrors", pass.workspaceId, true)
     elseif status == "applied" and latest and not paused and pass.generation == generation
             and pass.division == divisions[key] then
         setEntry("layoutErrors", pass.workspaceId, false)
+        restoredWorkspaceIds[key] = nil
+        noctalia.state.set("pendingRestores", copy(restoredWorkspaceIds))
     end
     if latest and status and not paused and pass.generation == generation then
         setEntry("layoutStatuses", pass.workspaceId, status)
@@ -593,7 +721,7 @@ local function finishRedistribution(pass, status, verify)
             serial = pass.serial, retries = pass.retries }
     end
     if not paused and (pendingManual or retryPass or verificationPass
-            or next(pendingWorkspaceIds)) then
+            or next(pendingWorkspaceIds) or next(restoreRequests)) then
         debounceTicks = debounceTicks or 0
     end
 end
@@ -607,6 +735,7 @@ end
 
 local function redistribute(pass)
     busy = true
+    pass.activationSerial = activationSerial
     local queryRevision = workspaceRevision
     if not noctalia.runAsync("niri msg -j workspaces", function(workspaceResult)
         local rows = snapshot(workspaceResult)
@@ -707,6 +836,7 @@ noctalia.state.watch("paused", function(value)
         pendingManual = nil
         pendingWorkspaceIds = {}
         verificationWorkspaceIds = {}
+        restoreRequests = {}
         retryPass = nil
         verificationPass = nil
         debounceTicks = nil
@@ -750,6 +880,15 @@ function update()
     elseif verificationPass then
         pass = verificationPass
         verificationPass = nil
+    elseif next(restoreRequests) then
+        local affected = {}
+        for workspaceId in pairs(logic.activeWorkspaceIds(workspaces, restoreRequests)) do
+            if restoredWorkspaceIds[tostring(workspaceId)] then affected[workspaceId] = true end
+        end
+        restoreRequests = {}
+        if next(affected) then
+            pass = { affected = affected, serial = manualSerial, retries = 0, generation = generation }
+        end
     end
     if pass then redistribute(pass) end
 end

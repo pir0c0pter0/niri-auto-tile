@@ -24,5 +24,6 @@
   "status.saveError": "Préférence non enregistrée. Elle reste valable pour cette session ; cliquez sur le nombre sélectionné pour réessayer.",
   "status.streamError": "Événements de fenêtres indisponibles. Utilisez Réappliquer lorsque l’automatisation est active ; la surveillance n’est pas confirmée.",
   "panel.workspace": "Espace de travail : {workspace}",
-  "panel.noWorkspace": "En attente d’un espace de travail sur cet écran."
+  "panel.noWorkspace": "En attente d’un espace de travail sur cet écran.",
+  "panel.positionPersistence": "Après un redémarrage, cette préférence utilise la position sur cet écran. Changer l’ordre peut modifier l’association."
 }

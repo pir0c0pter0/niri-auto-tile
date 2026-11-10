@@ -24,5 +24,6 @@
   "status.saveError": "Preferenza non salvata. Resta valida per questa sessione; premi il numero selezionato per riprovare a salvarla.",
   "status.streamError": "Eventi delle finestre non disponibili. Usa Riapplica con l’automazione attiva; il monitoraggio non è confermato.",
   "panel.workspace": "Spazio di lavoro: {workspace}",
-  "panel.noWorkspace": "In attesa di uno spazio di lavoro su questo monitor."
+  "panel.noWorkspace": "In attesa di uno spazio di lavoro su questo monitor.",
+  "panel.positionPersistence": "Dopo il riavvio, questa preferenza usa la posizione su questo monitor. Cambiare l’ordine può cambiare l’associazione."
 }

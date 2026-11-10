@@ -36,7 +36,7 @@ that small, repetitive job automatically while respecting the way niri works.
 - **Floating-friendly** — floating windows are left untouched.
 - **Focus restoration** — checks the target workspace before resizing and attempts to restore the previous focus afterward.
 - **Workspace-aware** — redistributes only the focused workspace, leaving other monitors untouched.
-- **Persistent** — remembers workspace preferences across Noctalia restarts within the same niri session; named workspaces also survive compositor restarts.
+- **Persistent** — restores preferences after reboot by workspace name, or by monitor and position for unnamed workspaces.
 - **Lightweight** — runs entirely in Noctalia's Luau plugin runtime.
 - **Localized** — includes English, Portuguese (Brazil), German, Spanish, French,
   Italian, Japanese, Korean, Russian, and Chinese translations.
@@ -59,9 +59,10 @@ accessible through niri's horizontal scrolling.
 
 Each workspace has its own preference, initially **4** (or your saved preference
 from an earlier version). Each bar widget shows the preference of the active
-workspace on that monitor. Switching workspaces updates the displayed number
-without triggering redistribution. A workspace keeps its preference when moved
-to another monitor.
+workspace on that monitor. After restarting, saved widths are applied when each
+workspace is first focused with a tiled window. Once restored, switching
+workspaces updates the displayed number without triggering redistribution. A
+workspace keeps its preference when moved to another monitor during the session.
 
 Redistribution changes only the focused workspace. Other workspaces retain their
 widths. A request made for one workspace will not be redirected to another if
@@ -155,7 +156,8 @@ focused workspace. Restarting Noctalia starts automation again.
 While a floating window is focused, layout requests leave the workspace alone.
 Focus a tiled window and use **Reapply** to apply the saved preference. Merely
 changing focus does not revive a skipped request. Opening or closing only
-floating windows does not schedule a redistribution.
+floating windows does not schedule a redistribution. A saved layout awaiting
+restoration after startup remains pending until a tiled window can be focused.
 
 The panel and widget tooltip distinguish a paused session, a failed save, and
 layout or event-stream failures. If saving fails, the selection remains usable
@@ -163,11 +165,25 @@ for this session; click its number again to retry saving. Reopening the panel
 preserves that warning. **Reapply** retries the layout, not the save.
 
 Preferences are saved in `workspace-divisions.json` in the plugin data directory.
-Named workspaces are identified by name. Unnamed workspaces are identified by
-their niri ID and compositor session, so restarting Noctalia preserves them but
-restarting niri does not apply old IDs to unrelated workspaces. The old `division`
-file is kept as the default for workspaces without a saved preference.
+Within the same niri session, preferences follow workspace IDs, including when
+workspaces are reordered or moved between monitors. After reboot or a compositor
+restart, named workspaces are restored by name. Unnamed workspaces use their
+saved monitor connector name and position on that monitor. Two monitors can have
+the same workspace position without sharing a preference.
+
+Restoration by position follows the slot, not the workspace's contents.
+Reordering workspaces, moving them to another monitor, or changing connected
+monitors can therefore associate a saved preference with a different workspace
+after restarting. For a stable association, declare named workspaces in your
+[niri configuration](https://niri-wm.github.io/niri/Configuration%3A-Named-Workspaces.html).
+A name assigned only at runtime must also be recreated in the next session.
+The plugin does not create workspaces or edit niri configuration.
+
+Existing version 1 preference files remain readable; position preferences are
+recorded when saving a selection. The old `division` file is kept as the default
+for workspaces without a saved preference.
 Naming or renaming a workspace updates its saved name without resizing windows.
+Removing its name saves the current monitor and position when available.
 If existing preferences could not be read safely, automatic name updates leave
 the file intact and display a save warning.
 

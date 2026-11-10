@@ -24,5 +24,6 @@
   "status.saveError": "Preference not saved. It remains active for this session; click the selected number to retry saving.",
   "status.streamError": "Window events unavailable. Use Reapply while automation is active; event monitoring is not confirmed.",
   "panel.workspace": "Workspace: {workspace}",
-  "panel.noWorkspace": "Waiting for a workspace on this output."
+  "panel.noWorkspace": "Waiting for a workspace on this output.",
+  "panel.positionPersistence": "After restarting, this preference uses its position on this monitor. Reordering can change the association."
 }
