@@ -1,5 +1,25 @@
 # Changelog
 
+## 2.2.0 - 2026-11-10
+
+### Added
+
+- Restore unnamed workspace divisions after reboot by monitor and workspace position; keep named-workspace restoration and same-session ID tracking.
+- Apply saved widths when a restored workspace is first focused with a tiled window, without reapplying on every later workspace switch.
+- Explain positional restoration in the panel and all ten translations. Reordering workspaces or changing monitors can associate the saved division with a different workspace after restarting.
+
+### Fixed
+
+- Preserve unrelated saved preferences after a temporary startup read failure, including temporary selections across service reloads.
+- Save through a temporary file and atomic rename so partial writes or replacement failures leave the previous preferences intact.
+- Preserve the division when a workspace loses its name and has a known monitor and position.
+- Keep restoration pending through empty or floating workspaces, pauses, failed commands and stale callbacks without creating automatic retry loops.
+
+### Changed
+
+- Write preference schema version 2 while continuing to read version 1 files.
+- Expand isolated runtime coverage to 62 tests; validate JSON and temporary-file replacement with separate Noctalia processes in an isolated environment.
+
 ## 2.1.0 - 2026-11-09
 
 ### Added
