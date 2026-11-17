@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.2.1 - 2026-11-17
+
+### Fixed
+
+- Only recenter after closing a tiled window when the remaining columns are within the selected division, preserving widths and focus instead of visiting every column.
+- Coalesce column index changes around a close without replaying redistribution, and discard an older full verification pass after centering.
+- Keep full layout application for real structural changes, pending restoration, layout errors, and division changes that could not be applied because focus moved elsewhere.
+
+### Changed
+
+- Expand isolated runtime coverage from 62 to 71 tests, including event ordering, stale verification passes, and unapplied division changes.
+- Document that native centering includes only fully visible columns; use Reapply if previous scrolling left surviving columns outside the viewport.
+
 ## 2.2.0 - 2026-11-10
 
 ### Added
