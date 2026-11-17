@@ -116,6 +116,20 @@ end
 assert(#logic.widths(0, 4) == 0)
 local fourColumns = logic.buildCommand(windowsFor(1, 1, 4, 2), { [1] = 2 }, 4)
 assert(occurrences(fourColumns, "set-column-width 25") == 4)
+for _, count in ipairs({ 1, 3, 4 }) do
+    local centered, state, intent = logic.buildCommand(windowsFor(1, 1, count, count), { [1] = count }, 4, "close")
+    assert(state == "ready" and intent == "close")
+    assert(occurrences(centered, "center-visible-columns") == 1)
+    assert(not centered:find("focus-window", 1, true))
+    assert(not centered:find("set-column-width", 1, true))
+end
+local stacked = windowsFor(1, 1, 4, 4)
+append(stacked, { { id = 9, workspace_id = 1, is_floating = false,
+    layout = { pos_in_scrolling_layout = { 0, 1 } } } })
+local centered, _, intent = logic.buildCommand(stacked, { [1] = 4 }, 4, "close")
+assert(intent == "close" and not centered:find("set-column-width", 1, true))
+local overflow, _, overflowIntent = logic.buildCommand(windowsFor(1, 1, 5, 5), { [1] = 5 }, 4, "close")
+assert(overflowIntent ~= "close" and occurrences(overflow, "set-column-width") == 5)
 local thirds = logic.widths(5, 3)
 for first = 1, 3 do
     assert(math.abs(sum(thirds, first, first + 2) - 100) < 0.000001)
@@ -177,13 +191,14 @@ assert(not command:find("focus-window --id 10", 1, true))
 assert(endsWith(command, focusAction(202)))
 
 local known = {}
-local redistribute, verify, affected = logic.shouldRedistribute({
+local redistribute, verify, affected, intents = logic.shouldRedistribute({
     WindowOpenedOrChanged = { window = {
         id = 10, workspace_id = 1, is_floating = false,
         layout = { pos_in_scrolling_layout = { 0, 0 } },
     } },
 }, known)
 assert(redistribute and verify and affected[1])
+assert(intents[1] == "full")
 assert(not logic.shouldRedistribute({
     WindowOpenedOrChanged = { window = {
         id = 10, workspace_id = 1, is_floating = false, title = "new title",
@@ -207,8 +222,8 @@ assert(not logic.shouldRedistribute({
         { 10, { pos_in_scrolling_layout = { 1, 0 }, tile_size = { 100, 100 } } },
     } },
 }, known))
-redistribute, verify = logic.shouldRedistribute({ WindowClosed = { id = 10 } }, known)
-assert(redistribute and verify)
+redistribute, verify, affected, intents = logic.shouldRedistribute({ WindowClosed = { id = 10 } }, known)
+assert(redistribute and verify and affected[2] and intents[2] == "close")
 redistribute, verify = logic.shouldRedistribute({ WindowsChanged = { windows = {
     { id = 11, workspace_id = 1, is_floating = false,
         layout = { pos_in_scrolling_layout = { 0, 0 } } },
@@ -238,6 +253,15 @@ command, status = logic.buildCommand(windowsFor(1, 1, 2), { [1] = 99 }, 4)
 assert(command == "" and status == "focus-changed")
 command, status = logic.buildCommand({}, { [1] = true }, 4)
 assert(command == "" and status == "empty")
+for _, case in ipairs({
+    { {}, { [1] = true }, "empty" },
+    { windowsFor(2, 20, 1, 20), { [1] = 1 }, "focus-changed" },
+    { windowsFor(1, 1, 2), { [1] = 99 }, "focus-changed" },
+    { { { id = 99, workspace_id = 1, is_floating = true, is_focused = true } }, { [1] = 99 }, "floating" },
+}) do
+    command, status = logic.buildCommand(case[1], case[2], 4, "close")
+    assert(command == "" and status == case[3])
+end
 
 -- A floating effective focus has the same policy on either side of the visible limit.
 for _, count in ipairs({ 1, 4, 5, 8 }) do

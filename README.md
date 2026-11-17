@@ -26,7 +26,7 @@ Niri's scrolling layout is flexible, but keeping a predictable number of
 columns visible can require frequent manual resizing. Niri Auto Tile handles
 that small, repetitive job automatically while respecting the way niri works.
 
-- **Automatic redistribution** — reacts to window open/close events and changes to workspace, column, or floating state.
+- **Automatic layout** — redistributes on opening or moving tiled windows; closing only recenters when the remaining columns fit the selected count.
 - **Balanced widths** — each tiled column uses the selected fraction of the output width.
 - **One-click control** — choose a 1, 2, 3, or 4-column layout from the bar.
 - **Per-workspace preferences** — keep four columns in one workspace and two in another; each bar shows its monitor's active workspace preference.
@@ -56,6 +56,11 @@ The selected fraction is applied to every tiled column in the focused workspace,
 regardless of the column count. For example, selecting **4** sets each column to
 25%, including when there are four or fewer columns. Additional columns remain
 accessible through niri's horizontal scrolling.
+
+Closing a tiled window preserves the remaining column widths and focus when
+their count is at or below the selected division. The plugin only centers the
+visible columns, without visiting each column or repeating the layout pass.
+Pending restoration or recovery from a layout error still applies the full layout.
 
 Each workspace has its own preference, initially **4** (or your saved preference
 from an earlier version). Each bar widget shows the preference of the active
@@ -196,8 +201,8 @@ noctalia msg panel-toggle pir0c0pter0/niri-auto-tile:panel
 ## What happens behind the scenes
 
 The plugin starts with Noctalia, reads niri's current window list, and listens
-to `niri msg -j event-stream`. After an open/close event or a change to a window's
-workspace, column, or floating state, it:
+to `niri msg -j event-stream`. A full redistribution after opening a tiled window
+or changing its workspace, column, or floating state:
 
 1. selects the affected workspace only when it is focused;
 2. groups its tiled windows by column;
@@ -206,13 +211,20 @@ workspace, column, or floating state, it:
 5. anchors and centers the visible columns; and
 6. restores the window that was focused before redistribution.
 
+Closing a tiled window uses only `center-visible-columns` when the remaining
+columns are at or below the selected division and no full application is pending.
+Closing with more columns than the division still uses full redistribution.
+Column index changes that preserve the grouping and relative order of the
+surviving windows do not cause another layout batch.
+
 Events are briefly coalesced to avoid repeated work during bursts, and another
 pass is queued if the layout changes while redistribution is already running.
 Manual requests take precedence over automatic events and keep their target
 workspace. Each workspace uses its own saved division.
 Conflicting focus snapshots get one new attempt; stale queries from before a
-pause cannot start a layout after resuming. An additional pass after tiled
-windows open or close still verifies their settled layout and framing.
+pause cannot start a layout after resuming. Full redistribution after tiled
+windows open or close also verifies their settled layout and framing; a
+centralization alone does not schedule that second pass.
 
 ## Plugin entries
 
@@ -232,6 +244,12 @@ Layout actions are separate niri commands, not an atomic transaction. Changing
 focus during an executing batch can still cause transient focus changes;
 timeouts or process termination can prevent its final focus restoration.
 Command failures are reported even if the final restoration succeeds.
+
+Niri's `center-visible-columns` centers only columns already fully visible.
+After manual scrolling or a layout with columns outside the viewport, closing
+a window can leave a surviving column off screen even when the column count
+is within the selected division. Use **Reapply** to restore the full layout
+and framing in that case.
 
 Failed event-stream launches are retried at 1, 2, 4, 8, then 10-second intervals.
 The runtime does not expose stream termination after an accepted launch, so the

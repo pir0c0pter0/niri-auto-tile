@@ -67,10 +67,25 @@ local function sameTopology(a, b)
         and a.columnIndex == b.columnIndex
 end
 
-local function addWorkspace(workspaceIds, windowTopology)
+local function mergeIntent(previous, intent)
+    if previous == "full" or intent == "full" then return "full" end
+    if previous == "close" or intent == "close" then return "close" end
+    return intent
+end
+
+local function addWorkspace(workspaceIds, windowTopology, intents, intent)
     if windowTopology and windowTopology.floating ~= true and windowTopology.workspaceId then
         workspaceIds[windowTopology.workspaceId] = true
+        intents[windowTopology.workspaceId] = mergeIntent(intents[windowTopology.workspaceId], intent)
     end
+end
+
+local function topologyIntent(previous, current)
+    if previous and previous.workspaceId == current.workspaceId
+            and previous.floating == current.floating then
+        return "layout"
+    end
+    return "full"
 end
 
 function logic.activeWorkspaceIds(workspaces, affected)
@@ -137,13 +152,14 @@ function logic.groupColumns(windows, workspaceIds)
 end
 
 function logic.shouldRedistribute(event, knownIds)
+    local intents = {}
     local closed = type(event) == "table" and event.WindowClosed or nil
     if type(closed) == "table" and tonumber(closed.id) then
         local id = tonumber(closed.id)
         local affected = {}
-        addWorkspace(affected, knownIds[id])
+        addWorkspace(affected, knownIds[id], intents, "close")
         knownIds[id] = nil
-        return next(affected) ~= nil, next(affected) ~= nil, affected
+        return next(affected) ~= nil, next(affected) ~= nil, affected, intents
     end
 
     local changed = type(event) == "table" and event.WindowOpenedOrChanged or nil
@@ -155,11 +171,12 @@ function logic.shouldRedistribute(event, knownIds)
         local different = not sameTopology(knownIds[id], nextTopology)
         local affected = {}
         if different then
-            addWorkspace(affected, previous)
-            addWorkspace(affected, nextTopology)
+            local intent = topologyIntent(previous, nextTopology)
+            addWorkspace(affected, previous, intents, intent)
+            addWorkspace(affected, nextTopology, intents, intent)
         end
         knownIds[id] = nextTopology
-        return next(affected) ~= nil, opened and next(affected) ~= nil, affected
+        return next(affected) ~= nil, opened and next(affected) ~= nil, affected, intents
     end
 
     local allChanged = type(event) == "table" and event.WindowsChanged or nil
@@ -180,22 +197,23 @@ function logic.shouldRedistribute(event, knownIds)
             openedOrClosed = openedOrClosed
                 or (knownIds[itemId] == nil and itemTopology.floating ~= true)
             if not sameTopology(knownIds[itemId], itemTopology) then
-                addWorkspace(affected, knownIds[itemId])
-                addWorkspace(affected, itemTopology)
+                local intent = topologyIntent(knownIds[itemId], itemTopology)
+                addWorkspace(affected, knownIds[itemId], intents, intent)
+                addWorkspace(affected, itemTopology, intents, intent)
             end
         end
         for itemId in pairs(knownIds) do
             openedOrClosed = openedOrClosed
                 or (nextIds[itemId] == nil and knownIds[itemId].floating ~= true)
             if not nextIds[itemId] then
-                addWorkspace(affected, knownIds[itemId])
+                addWorkspace(affected, knownIds[itemId], intents, "close")
             end
             knownIds[itemId] = nil
         end
         for itemId, itemTopology in pairs(nextIds) do
             knownIds[itemId] = itemTopology
         end
-        return next(affected) ~= nil, openedOrClosed and next(affected) ~= nil, affected
+        return next(affected) ~= nil, openedOrClosed and next(affected) ~= nil, affected, intents
     end
 
     local layoutsChanged = type(event) == "table" and event.WindowLayoutsChanged or nil
@@ -210,10 +228,10 @@ function logic.shouldRedistribute(event, knownIds)
             local columnIndex = type(position) == "table" and tonumber(position[1]) or nil
             if current and current.columnIndex ~= columnIndex then
                 current.columnIndex = columnIndex
-                addWorkspace(affected, current)
+                addWorkspace(affected, current, intents, "layout")
             end
         end
-        return next(affected) ~= nil, false, affected
+        return next(affected) ~= nil, false, affected, intents
     end
 
     return false
@@ -223,7 +241,7 @@ local function action(command)
     return "(niri msg action " .. command .. " >/dev/null)"
 end
 
-function logic.buildCommand(windows, workspaceIds, division)
+function logic.buildCommand(windows, workspaceIds, division, intent)
     local focusedWindow = nil
     local targetCount = 0
     for _, window in ipairs(windows) do
@@ -266,6 +284,12 @@ function logic.buildCommand(windows, workspaceIds, division)
         return "", "focus-changed"
     end
 
+    if intent == "close" and #workspaces == 1
+            and #workspaces[1].columns <= logic.normalizeDivision(division) then
+        -- shortcut: native centering includes fully visible columns; upgrade when viewport geometry is available.
+        return action("center-visible-columns"), "ready", "close"
+    end
+
     local commands = {}
     for _, workspace in ipairs(workspaces) do
         local first, last = logic.visibleRange(
@@ -290,6 +314,46 @@ function logic.buildCommand(windows, workspaceIds, division)
     end
     table.insert(commands, action("focus-window --id " .. restoreId) .. " || status=1")
     return "status=0; " .. table.concat(commands, "; ") .. '; exit "$status"', "ready"
+end
+
+local function columnSnapshot(windows, workspaceId)
+    local columns = {}
+    for _, window in ipairs(windows) do
+        local id = tonumber(window.id)
+        if tonumber(window.workspace_id) == workspaceId and not window.is_floating then
+            local position = type(window.layout) == "table" and window.layout.pos_in_scrolling_layout
+            local index = type(position) == "table" and tonumber(position[1])
+            if not id or not index then return nil end
+            columns[#columns + 1] = { id = id, index = index }
+        end
+    end
+    table.sort(columns, function(a, b)
+        return a.index < b.index or (a.index == b.index and a.id < b.id)
+    end)
+    return columns
+end
+
+local function columnSignature(columns, survivingIds)
+    if not columns then return nil end
+    local signature, previousIndex = {}, nil
+    for _, column in ipairs(columns) do
+        if not survivingIds or survivingIds[column.id] then
+            signature[#signature + 1] = (column.index == previousIndex and "," or "|") .. column.id
+            previousIndex = column.index
+        end
+    end
+    return table.concat(signature)
+end
+
+local function layoutIntent(previous, columns, windows)
+    if not previous then return "full" end
+    local signature = columnSignature(columns)
+    if signature == nil then return "full" end
+    if signature == columnSignature(previous) then return "unchanged" end
+    local survivingIds = {}
+    for _, window in ipairs(windows) do survivingIds[tonumber(window.id)] = true end
+    if signature == columnSignature(previous, survivingIds) then return "close" end
+    return "full"
 end
 
 local function copy(values)
@@ -446,6 +510,7 @@ local paused = noctalia.state.get("paused") == true
 local previousRequest = noctalia.state.get("workspaceRequest")
 local requestSerial = type(previousRequest) == "table" and previousRequest.serial or 0
 local knownIds = {}
+local appliedColumns = {}
 local busy = false
 local generation = 0
 local manualSerial = 0
@@ -658,10 +723,10 @@ local function startStream()
             publishWorkspaces(rows)
         end
         -- Only stream events own this cache; older query results cannot overwrite it.
-        local changed, verify, affected = logic.shouldRedistribute(event, knownIds)
+        local changed, verify, affected, intents = logic.shouldRedistribute(event, knownIds)
         if changed and not paused then
             for workspaceId in pairs(affected) do
-                pendingWorkspaceIds[workspaceId] = true
+                pendingWorkspaceIds[workspaceId] = mergeIntent(pendingWorkspaceIds[workspaceId], intents[workspaceId])
                 if verify then verificationWorkspaceIds[workspaceId] = true end
             end
             if not pendingManual then debounceTicks = 3 end
@@ -699,6 +764,17 @@ end
 local function finishRedistribution(pass, status, verify)
     busy = false
     local key = pass.workspaceId and tostring(pass.workspaceId)
+    if key and current(pass) then
+        if status == "applied" then
+            appliedColumns[key] = pass.columns
+        elseif status == "empty" or status == "error" then
+            appliedColumns[key] = nil
+        end
+        if pass.intent == "close" and verificationPass then
+            verificationPass.affected[pass.workspaceId] = nil
+            if next(verificationPass.affected) == nil then verificationPass = nil end
+        end
+    end
     if pass.workspaceId and current(pass)
             and (restoreRequests[pass.workspaceId] or 0) <= (pass.activationSerial or 0) then
         restoreRequests[pass.workspaceId] = nil
@@ -706,7 +782,7 @@ local function finishRedistribution(pass, status, verify)
     local latest = key and workspaceSerials[key] == pass.serial
     if status == "error" and (latest or pass.division ~= nil) then
         setEntry("layoutErrors", pass.workspaceId, true)
-    elseif status == "applied" and latest and not paused and pass.generation == generation
+    elseif status == "applied" and pass.intent ~= "close" and latest and not paused and pass.generation == generation
             and pass.division == divisions[key] then
         setEntry("layoutErrors", pass.workspaceId, false)
         restoredWorkspaceIds[key] = nil
@@ -715,7 +791,7 @@ local function finishRedistribution(pass, status, verify)
     if latest and status and not paused and pass.generation == generation then
         setEntry("layoutStatuses", pass.workspaceId, status)
     end
-    if current(pass) and verify and pass.verify and next(pass.verify) then
+    if current(pass) and pass.intent ~= "close" and verify and pass.verify and next(pass.verify) then
         -- shortcut: repeat framing until IPC geometry proves the viewport; upgrade when available.
         verificationPass = { affected = pass.verify, generation = generation,
             serial = pass.serial, retries = pass.retries }
@@ -769,12 +845,24 @@ local function redistribute(pass)
             end
             -- Recheck live focus after the asynchronous windows query.
             activeWorkspaceIds = logic.activeWorkspaceIds(workspaces, { [pass.workspaceId] = true })
-            local division = divisions[tostring(pass.workspaceId)] or defaultDivision
-            local command, status
+            local key = tostring(pass.workspaceId)
+            local division = divisions[key] or defaultDivision
+            local columns = columnSnapshot(windows, pass.workspaceId)
+            local intent = pass.affected and pass.affected[pass.workspaceId]
+            if (intent == "close" or intent == "layout") and not restoredWorkspaceIds[key]
+                    and not (noctalia.state.get("layoutErrors") or {})[key] then
+                -- Compare complete snapshots: stream layout events can precede the corresponding close.
+                intent = layoutIntent(appliedColumns[key], columns, windows)
+            else
+                intent = "full"
+            end
+            local command, status, commandIntent
             if next(activeWorkspaceIds) == nil then
                 command, status = "", "focus-changed"
+            elseif intent == "unchanged" then
+                command = ""
             else
-                command, status = logic.buildCommand(windows, activeWorkspaceIds, division)
+                command, status, commandIntent = logic.buildCommand(windows, activeWorkspaceIds, division, intent)
             end
             if status == "focus-changed" and pass.retries == 0 and not pendingManual then
                 pass.retries = 1
@@ -784,6 +872,8 @@ local function redistribute(pass)
                 finishRedistribution(pass, status)
             else
                 pass.division = division
+                pass.intent = commandIntent or "full"
+                pass.columns = columns
                 setEntry("layoutStatuses", pass.workspaceId, "applying")
                 if not noctalia.runAsync(command, function(layoutResult)
                     local failed = layoutResult.exitCode ~= 0 or layoutResult.timedOut
@@ -818,6 +908,7 @@ noctalia.state.watch("workspaceRequest", function(request)
     if request.division ~= nil then
         local division = logic.normalizeDivision(request.division)
         local changed = divisions[key] ~= division
+        if changed then appliedColumns[key] = nil end
         divisions[key] = division
         noctalia.state.set("workspaceDivisions", copy(divisions))
         savePreferences({ [workspaceId] = true })
@@ -836,6 +927,7 @@ noctalia.state.watch("paused", function(value)
         pendingManual = nil
         pendingWorkspaceIds = {}
         verificationWorkspaceIds = {}
+        appliedColumns = {}
         restoreRequests = {}
         retryPass = nil
         verificationPass = nil

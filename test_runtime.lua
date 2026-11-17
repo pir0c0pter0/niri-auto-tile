@@ -186,6 +186,25 @@ end
 local function hasWidth(command, width)
     assert(command:find("set-column-width " .. width, 1, true), "missing width " .. width .. ": " .. command)
 end
+local function onlyCenters(command)
+    local _, centers = command:gsub("center%-visible%-columns", "")
+    equal(centers, 1, "single center action")
+    assert(not command:find("focus-window", 1, true), "centering moved focus")
+    assert(not command:find("set-column-width", 1, true), "centering resized columns")
+end
+local function closeWindow(m, index)
+    local removed = table.remove(m.windows, index)
+    local changes = {}
+    for position, window in ipairs(m.windows) do
+        window.layout.pos_in_scrolling_layout = { position - 1, 0 }
+        if removed.is_focused then window.is_focused = position == 1 end
+        if window.is_focused then m.workspaces[1].active_window_id = window.id end
+        changes[#changes + 1] = { window.id, window.layout }
+    end
+    if #m.windows == 0 then m.workspaces[1].active_window_id = nil end
+    m.event({ WindowClosed = { id = removed.id } })
+    return { WindowLayoutsChanged = { changes = changes } }
+end
 
 test("two monitor widgets show independent workspace divisions 4 and 2", function()
     local m = mock({ state = { workspaces = {
@@ -316,6 +335,126 @@ test("events during a batch coalesce and own unchanged events stabilize", functi
     m.drain(); equal(m.maxLayouts, 1)
     m.commands = {}; m.event({ WindowsChanged = { windows = m.windows } }); m.drain()
     equal(#m.commands, 0)
+end)
+
+test("closing fitting columns centers once without resizing or visiting windows", function()
+    for _, remaining in ipairs({ 1, 3, 4 }) do
+        for _, index in ipairs({ 1, math.ceil((remaining + 1) / 2), remaining + 1 }) do
+            local m = mock({ disk = "4" })
+            m.windows = windows(1, 11, remaining + 1, 11 + remaining)
+            m.workspaces[1].active_window_id = 11 + remaining
+            m.ready()
+            m.event(closeWindow(m, index)); m.drain()
+            equal(#m.layouts(), 1, "closing column " .. index)
+            onlyCenters(m.layouts()[1])
+            m.event({ WindowsChanged = { windows = m.windows } }); m.drain()
+            equal(#m.layouts(), 1, "unchanged snapshot must not repeat centering")
+        end
+    end
+end)
+
+test("close compaction before or after the batch never schedules another layout", function()
+    for _, timing in ipairs({ "query", "batch", "finished" }) do
+        local m = mock({ disk = "4" }):ready()
+        local compacted = closeWindow(m, 1)
+        m.tick(5)
+        if timing ~= "query" then m.reply(); m.reply() end
+        if timing == "finished" then m.reply() end
+        m.event(compacted)
+        m.drain(); equal(#m.layouts(), 1, timing); onlyCenters(m.layouts()[1])
+    end
+end)
+
+test("compaction arriving before WindowClosed remains a close-only change", function()
+    for _, eventKind in ipairs({ "layouts", "window" }) do
+        local m = mock({ disk = "4" }):ready()
+        local changes = {}
+        for index = 2, #m.windows do
+            local window = m.windows[index]
+            window.layout.pos_in_scrolling_layout = { index - 2, 0 }
+            changes[#changes + 1] = { window.id, window.layout }
+            if eventKind == "window" then m.event({ WindowOpenedOrChanged = { window = window } }) end
+        end
+        if eventKind == "layouts" then m.event({ WindowLayoutsChanged = { changes = changes } }) end
+        local removed = table.remove(m.windows, 1)
+        m.windows[1].is_focused = true; m.workspaces[1].active_window_id = m.windows[1].id
+        m.event({ WindowClosed = { id = removed.id } }); m.drain()
+        equal(#m.layouts(), 1, eventKind); onlyCenters(m.layouts()[1])
+    end
+end)
+
+test("close centering supersedes an older full verification pass", function()
+    local m = mock({ disk = "4" }):ready()
+    local opened = windows(1, 15, 1)[1]
+    opened.layout.pos_in_scrolling_layout = { 4, 0 }
+    m.windows[#m.windows + 1] = opened
+    m.event({ WindowOpenedOrChanged = { window = opened } })
+    m.tick(5); m.reply(); m.reply(); hasWidth(assert(m.layouts()[1]), "25")
+    m.reply()
+    closeWindow(m, 5); m.drain()
+    equal(#m.layouts(), 2, "old verification must not follow centering")
+    onlyCenters(m.layouts()[2])
+end)
+
+test("multiple closes coalesce but opening movement and manual intent still resize", function()
+    for _, mixed in ipairs({ "close", "snapshot", "open", "move", "manual", "overflow" }) do
+        local m = mock({ disk = mixed == "overflow" and "2" or "4" }):ready()
+        if mixed == "snapshot" then
+            table.remove(m.windows)
+            m.event({ WindowsChanged = { windows = m.windows } })
+        else m.event(closeWindow(m, 4)) end
+        if mixed == "close" then
+            m.event(closeWindow(m, 3))
+        elseif mixed == "open" then
+            local opened = windows(1, 20, 1)[1]
+            opened.layout.pos_in_scrolling_layout = { 3, 0 }
+            m.windows[#m.windows + 1] = opened
+            m.event({ WindowOpenedOrChanged = { window = opened } })
+        elseif mixed == "move" then
+            m.windows[1].layout.pos_in_scrolling_layout = { 1, 0 }
+            m.windows[2].layout.pos_in_scrolling_layout = { 0, 0 }
+            m.event({ WindowLayoutsChanged = { changes = {
+                { m.windows[1].id, m.windows[1].layout }, { m.windows[2].id, m.windows[2].layout },
+            } } })
+        elseif mixed == "manual" then m.request(2) end
+        m.drain()
+        if mixed == "close" or mixed == "snapshot" then
+            equal(#m.layouts(), 1); onlyCenters(m.layouts()[1])
+        else
+            hasWidth(assert(m.layouts()[1]), (mixed == "open" or mixed == "move") and "25" or "50")
+        end
+    end
+end)
+
+test("closing keeps empty floating and changed-workspace guards", function()
+    for _, guard in ipairs({ "empty", "floating", "workspace" }) do
+        local m = mock({ disk = "4" })
+        if guard == "empty" then m.windows = windows(1, 11, 1, 11) end
+        m.ready(); closeWindow(m, #m.windows)
+        if guard == "floating" then
+            for _, window in ipairs(m.windows) do window.is_focused = false end
+            m.windows[#m.windows + 1] = windows(1, 99, 1, 99, true)[1]
+            m.workspaces[1].active_window_id = 99
+        elseif guard == "workspace" then
+            m.tick(5); m.reply()
+            m.workspaces[1].is_focused = false
+            m.workspaces[2] = { id = 2, is_focused = true, is_active = true, active_window_id = 21 }
+            for _, window in ipairs(m.windows) do window.is_focused = false end
+            append(m.windows, windows(2, 21, 1, 21))
+            m.event({ WorkspacesChanged = { workspaces = m.workspaces } })
+        end
+        m.drain(); equal(#m.layouts(), 0, guard)
+    end
+end)
+
+test("failed centering releases the batch and the next close repairs pending errors", function()
+    local m = mock({ disk = "4" }):ready()
+    closeWindow(m, 4); m.tick(5); m.reply(); m.reply()
+    onlyCenters(assert(m.layouts()[1]))
+    m.reply({ exitCode = 1, stdout = "", stderr = "center failed" }); m.drain()
+    equal(m.state.layoutErrors["1"], true); equal(m.state.layoutStatuses["1"], "error")
+    closeWindow(m, 3); m.drain()
+    hasWidth(assert(m.layouts()[2]), "25"); equal(m.state.layoutErrors["1"], false)
 end)
 
 test("no-target queries preserve execution error until successful batch", function()
@@ -499,6 +638,20 @@ local function focus(m, id)
     for _, window in ipairs(m.windows) do window.is_focused = window.id == (id == 1 and 11 or 21) end
     m.event({ WorkspaceActivated = { id = id, focused = true } })
 end
+
+test("closing applies a division whose earlier request lost workspace focus", function()
+    local m = mock({ disk = "4" })
+    m.workspaces[2] = { id = 2, idx = 1, output = "HDMI-A-1", is_active = true,
+        is_focused = false, active_window_id = 21 }
+    m.windows = append(windows(1, 11, 3, 11), windows(2, 21, 1))
+    m.ready(); focus(m, 2); m.request(2, 1); m.drain()
+    equal(m.state.workspaceDivisions["1"], 2)
+    equal(m.state.layoutStatuses["1"], "focus-changed"); equal(#m.layouts(), 0)
+    focus(m, 1)
+    local removed = table.remove(m.windows, 3)
+    m.event({ WindowClosed = { id = removed.id } }); m.drain()
+    hasWidth(assert(m.layouts()[1]), "50")
+end)
 
 test("focus changes indicators only and monitor migration retains divisions", function()
     local m = dual()
@@ -998,6 +1151,17 @@ test("restored background workspace applies on first activation only", function(
     equal(m.state.pendingRestores["9"], nil)
     activateRestored(m, 8); m.drain(); activateRestored(m, 9); m.drain()
     equal(#m.layouts(), 1, "normal focus must not reapply completed restoration")
+end)
+
+test("close cannot satisfy a pending restoration by centering alone", function()
+    local m = restoredPair()
+    activateRestored(m, 9)
+    local removed = table.remove(m.windows)
+    m.event({ WindowClosed = { id = removed.id } })
+    m.tick(5); m.reply(); m.reply()
+    equal(m.state.pendingRestores["9"], true)
+    hasWidth(assert(m.layouts()[1]), "33.333")
+    m.reply(); m.drain(); equal(m.state.pendingRestores["9"], nil)
 end)
 
 test("restored background preference survives service reload until applied", function()
